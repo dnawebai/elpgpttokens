@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { getDb, getUnifiedApiKey } from '../db/index.js';
 import { proxyRouter } from './proxy.js';
 import { classifyIntent, ELP_INTENTS } from '../services/intent.js';
-import { resolveIntentRoute, ELP_AUTO_MODEL } from '../services/elp-router.js';
+import { resolveIntentRoute, loadSubscriberRouteTable, ELP_AUTO_MODEL, type ElpRouteTable } from '../services/elp-router.js';
+import { withUsageMeter } from '../lib/request-log.js';
+import {
+  premiumAllowance, publicAllowance, premiumCostMicros, mediaCostMicros, recordPremiumSpend, canAfford,
+  liveBlockCostMicros, LIVE_BLOCK_MINUTES, type PremiumAllowance,
+} from '../services/premium-usage.js';
 import { startLiveTranslation, LiveTranslateError } from '../services/live-translate.js';
 import {
   publicChatEnabled, publicSignupEnabled, dailyLimit, tierAllowsPremium,
@@ -37,13 +42,18 @@ interface Caller {
   member: Member | null;
   tier: AccessTier;
   subject: string;
+  /** Subscribers only: their premium allowance (services/premium-usage.ts). */
+  allowance: PremiumAllowance | null;
+  /** Premium models and voice right now: a subscriber with allowance left. */
+  premium: boolean;
 }
 
 function callerOf(req: Request): Caller {
   const member = memberForToken(req.headers[MEMBER_HEADER] as string | undefined);
-  return member
-    ? { member, tier: member.plan, subject: memberSubject(member) }
-    : { member: null, tier: 'visitor', subject: visitorSubject(req.ip ?? '') };
+  if (!member) return { member: null, tier: 'visitor', subject: visitorSubject(req.ip ?? ''), allowance: null, premium: false };
+  const subject = memberSubject(member);
+  const allowance = tierAllowsPremium(member.plan) ? premiumAllowance(subject) : null;
+  return { member, tier: member.plan, subject, allowance, premium: !!allowance && !allowance.exhausted };
 }
 
 function fail(res: Response, status: number, code: string, message: string, extra: Record<string, unknown> = {}) {
@@ -54,8 +64,8 @@ function openaiConnected(): boolean {
   return !!getDb().prepare("SELECT 1 FROM api_keys WHERE platform = 'openai' AND enabled = 1 AND status IN ('healthy', 'unknown') LIMIT 1").get();
 }
 
-function features(tier: AccessTier) {
-  const premium = tierAllowsPremium(tier);
+function features(caller: Caller) {
+  const { premium } = caller;
   return { premium, voice: premium, liveTranslate: premium && openaiConnected() };
 }
 
@@ -88,7 +98,9 @@ publicRouter.get('/status', (req: Request, res: Response) => {
     } : null,
     quota: quotaState(caller.subject, caller.tier),
     limits: { visitor: dailyLimit('visitor'), free: dailyLimit('free'), subscriber: dailyLimit('subscriber') },
-    features: features(caller.tier),
+    features: features(caller),
+    // Shares and reset time only: subscribers never see dollar amounts.
+    allowance: caller.allowance ? publicAllowance(caller.allowance) : null,
     billing: { enabled: billingEnabled() },
   });
 });
@@ -164,9 +176,9 @@ const routeSchema = z.object({
 publicRouter.post('/route', (req: Request, res: Response) => {
   const parsed = routeSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, 'invalid_request', 'text is required');
-  const { tier } = callerOf(req);
+  const caller = callerOf(req);
   const intent = classifyIntent(parsed.data.text, { hasImageAttachment: parsed.data.hasImage, previousIntent: parsed.data.previousIntent });
-  const decision = resolveIntentRoute(intent, { allowPremium: tierAllowsPremium(tier) });
+  const decision = resolveIntentRoute(intent, { allowPremium: caller.premium, ...(caller.premium ? { table: loadSubscriberRouteTable() } : {}) });
   res.json({ ...decision.info, targetLanguage: intent.targetLanguage ?? null });
 });
 
@@ -183,15 +195,79 @@ const chatSchema = z.object({
   stream: z.boolean().optional(),
 });
 
+type ChatMessageIn = z.infer<typeof chatSchema>['messages'][number];
+
+/** An attached image costs roughly this many characters' worth of context. */
+const IMAGE_PART_CHARS = 4_000;
+
+function contextBudgetChars(): number {
+  const raw = Number.parseInt(process.env.ELPGPT_PUBLIC_CONTEXT_CHARS ?? '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 48_000;
+}
+
+function messageChars(m: ChatMessageIn): number {
+  if (typeof m.content === 'string') return m.content.length;
+  return m.content.reduce((n, part) => n + (part.type === 'text' ? part.text.length : IMAGE_PART_CHARS), 0);
+}
+
+/**
+ * Keep the most recent turns that fit the context budget (about 12K tokens by
+ * default). Every message resends the whole history, so long conversations
+ * are what make each message expensive; this bounds that cost for every tier.
+ * System messages (the Translate tool's instructions) and the latest message
+ * always stay, and the kept history starts on a user turn, as Claude requires.
+ */
+export function trimContext<T extends ChatMessageIn>(messages: T[], maxChars = contextBudgetChars()): T[] {
+  const system = messages.filter(m => m.role === 'system');
+  const turns = messages.filter(m => m.role !== 'system');
+  const kept: T[] = [];
+  let used = system.reduce((n, m) => n + messageChars(m), 0);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const size = messageChars(turns[i]);
+    if (kept.length > 0 && used + size > maxChars) break;
+    kept.unshift(turns[i]);
+    used += size;
+  }
+  while (kept.length > 1 && kept[0].role === 'assistant') kept.shift();
+  return [...system, ...kept];
+}
+
+function routeHeaderOf(res: Response): { kind?: string; platform?: string | null } | null {
+  const raw = res.getHeader('x-elp-route');
+  if (typeof raw !== 'string') return null;
+  try { return JSON.parse(decodeURIComponent(raw)); } catch { return null; }
+}
+
 /** Hand a vetted request to the gateway's own /v1 handlers, in-process. */
-function forwardToGateway(req: Request, res: Response, next: NextFunction, path: string, allowPremium: boolean) {
+function forwardToGateway(req: Request, res: Response, next: NextFunction, path: string, allowPremium: boolean, routeTable?: ElpRouteTable) {
   req.url = path;
   req.headers.authorization = `Bearer ${getUnifiedApiKey()}`;
   // The gateway also reads keys from these; only the injected key may count.
   delete req.headers['x-api-key'];
   delete req.headers['x-goog-api-key'];
-  (req as Request & { elpAllowPremium?: boolean }).elpAllowPremium = allowPremium;
+  const elpReq = req as Request & { elpAllowPremium?: boolean; elpRouteTable?: ElpRouteTable };
+  elpReq.elpAllowPremium = allowPremium;
+  if (routeTable) elpReq.elpRouteTable = routeTable;
   proxyRouter(req, res, next);
+}
+
+/**
+ * Forward a subscriber's request with its premium cost metered: token costs of
+ * every call the gateway logs (failover attempts included) and, once the
+ * response finishes, the fixed cost of a generated image.
+ */
+function forwardMetered(caller: Caller, req: Request, res: Response, next: NextFunction, path: string, extra?: () => number) {
+  const subject = caller.subject;
+  res.on('finish', () => {
+    if (res.statusCode !== 200) return;
+    const route = routeHeaderOf(res);
+    if (route?.kind === 'image' && route.platform === 'openai') recordPremiumSpend(subject, mediaCostMicros('image'));
+    if (extra) recordPremiumSpend(subject, extra());
+  });
+  withUsageMeter(
+    usage => recordPremiumSpend(subject, premiumCostMicros(usage.platform, usage.modelId, usage.inputTokens, usage.outputTokens)),
+    () => forwardToGateway(req, res, next, path, caller.premium, caller.premium ? loadSubscriberRouteTable() : undefined),
+  );
 }
 
 publicRouter.post('/chat', (req: Request, res: Response, next: NextFunction) => {
@@ -209,15 +285,28 @@ publicRouter.post('/chat', (req: Request, res: Response, next: NextFunction) => 
     return fail(res, 429, 'daily_limit_reached', 'You have used all of today\'s messages.', { limit: quota.limit, tier: caller.tier });
   }
   // Only the vetted fields reach the gateway: model is always elpgpt-auto.
-  req.body = { model: ELP_AUTO_MODEL, messages: parsed.data.messages, stream: parsed.data.stream ?? true };
-  forwardToGateway(req, res, next, '/chat/completions', tierAllowsPremium(caller.tier));
+  req.body = { model: ELP_AUTO_MODEL, messages: trimContext(parsed.data.messages), stream: parsed.data.stream ?? true };
+  // Subscribers with allowance left get the premium (cost-efficient) routes;
+  // once it is used up they keep chatting on the free pool.
+  if (caller.allowance) forwardMetered(caller, req, res, next, '/chat/completions');
+  else forwardToGateway(req, res, next, '/chat/completions', false);
 });
 
 // ── Voice (subscribers) ───────────────────────────────────────────────────
+function allowanceUsed(res: Response, caller: Caller) {
+  fail(res, 403, 'premium_allowance_used', 'Your premium allowance is used up for now. Voice comes back when it resets.', {
+    resetsAt: caller.allowance?.resetsAt ?? null,
+  });
+}
+
 function requirePremium(req: Request, res: Response): Caller | null {
   const caller = callerOf(req);
   if (!tierAllowsPremium(caller.tier)) {
     fail(res, 403, 'subscription_required', 'Voice features are part of the subscription.');
+    return null;
+  }
+  if (!caller.premium) {
+    allowanceUsed(res, caller);
     return null;
   }
   return caller;
@@ -227,27 +316,36 @@ publicRouter.post('/speech', (req: Request, res: Response, next: NextFunction) =
   if (!requirePremium(req, res)) return;
   const input = typeof req.body?.input === 'string' ? req.body.input.slice(0, 4000) : '';
   if (!input) return fail(res, 400, 'invalid_request', 'input is required');
+  // Read-aloud runs on the free speech pool: nothing to meter.
   req.body = { model: 'auto', input, response_format: 'mp3' };
   forwardToGateway(req, res, next, '/audio/speech', true);
 });
 
 publicRouter.post('/transcriptions', (req: Request, res: Response, next: NextFunction) => {
-  if (!requirePremium(req, res)) return;
+  const caller = requirePremium(req, res);
+  if (!caller) return;
   // Multipart: the body stream is untouched (no JSON parser ran), so the
   // gateway's own multer handler reads it.
-  forwardToGateway(req, res, next, '/audio/transcriptions', true);
+  forwardMetered(caller, req, res, next, '/audio/transcriptions', () => mediaCostMicros('transcription'));
 });
 
+// Live interpreting is billed by OpenAI per minute, and the audio never passes
+// through this server, so minutes are charged ahead in blocks: the first block
+// when a session starts, the next ones as the interpreter asks to keep going
+// (/realtime/extend). Out of allowance, the interpreter is told to stop.
 publicRouter.post('/realtime/translate', async (req: Request, res: Response) => {
   const caller = requirePremium(req, res);
   if (!caller) return;
+  if (!canAfford(caller.subject, liveBlockCostMicros())) return allowanceUsed(res, caller);
   try {
-    res.json(await startLiveTranslation({
+    const answer = await startLiveTranslation({
       sdp: req.body?.sdp,
       targetLanguage: req.body?.targetLanguage,
       source: req.body?.source,
       userKey: caller.subject,
-    }));
+    });
+    recordPremiumSpend(caller.subject, liveBlockCostMicros());
+    res.json({ ...answer, blockMinutes: LIVE_BLOCK_MINUTES });
   } catch (err) {
     const status = err instanceof LiveTranslateError ? err.status : 502;
     fail(res, status, err instanceof LiveTranslateError && err.code ? err.code : 'live_translate_failed',
@@ -326,3 +424,17 @@ export async function stripeWebhookHandler(req: Request, res: Response): Promise
     fail(res, 500, 'webhook_failed', 'Webhook processing failed');
   }
 }
+
+const extendSchema = z.object({ sessions: z.union([z.literal(1), z.literal(2)]).optional() });
+
+/** Keep a live interpreter going for another block of minutes. */
+publicRouter.post('/realtime/extend', (req: Request, res: Response) => {
+  const caller = requirePremium(req, res);
+  if (!caller) return;
+  const parsed = extendSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return fail(res, 400, 'invalid_request', 'sessions must be 1 or 2');
+  const cost = liveBlockCostMicros(parsed.data.sessions ?? 1);
+  if (!canAfford(caller.subject, cost)) return allowanceUsed(res, caller);
+  recordPremiumSpend(caller.subject, cost);
+  res.json({ ok: true, blockMinutes: LIVE_BLOCK_MINUTES });
+});

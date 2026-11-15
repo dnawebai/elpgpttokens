@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { useI18n } from '@/i18n'
 import { apiFetch } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogDescription, DialogPopup, DialogTitle } from '@/components/ui/dialog'
 
@@ -19,13 +20,18 @@ interface MemberRow {
   disabled: boolean
   createdAt: string
   today: { limit: number; used: number; remaining: number }
+  /** Subscribers: estimated premium spend in USD (operator-only). */
+  premiumSpend: { todayUsd: number; monthUsd: number; exhausted: 'day' | 'month' | null } | null
 }
 
 interface MembersResponse {
   publicChatEnabled: boolean
   limits: { visitor: number; free: number; subscriber: number }
+  allowance?: { dailyUsd: number | null; monthlyUsd: number | null }
   members: MemberRow[]
 }
+
+const usd = (value: number) => `$${value.toFixed(2)}`
 
 export function MembersDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t } = useI18n()
@@ -56,6 +62,14 @@ export function MembersDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           </p>
         )}
         {data && <p className="text-xs text-muted-foreground">{t('chat.members.limits', data.limits)} · {t('chat.members.billingNote')}</p>}
+        {data?.allowance && (
+          <p className="text-xs text-muted-foreground">
+            {t('chat.members.allowance', {
+              daily: data.allowance.dailyUsd == null ? t('chat.members.unlimited') : usd(data.allowance.dailyUsd),
+              monthly: data.allowance.monthlyUsd == null ? t('chat.members.unlimited') : usd(data.allowance.monthlyUsd),
+            })}
+          </p>
+        )}
 
         {data && data.members.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('chat.members.empty')}</p>
@@ -67,6 +81,7 @@ export function MembersDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                   <th className="py-1 pr-3 font-medium">{t('chat.members.email')}</th>
                   <th className="py-1 pr-3 font-medium">{t('chat.members.plan')}</th>
                   <th className="py-1 pr-3 font-medium">{t('chat.members.billing')}</th>
+                  <th className="py-1 pr-3 font-medium">{t('chat.members.premium')}</th>
                   <th className="py-1 pr-3 font-medium">{t('chat.members.today')}</th>
                   <th className="py-1 font-medium">{t('chat.members.status')}</th>
                 </tr>
@@ -86,6 +101,9 @@ export function MembersDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                     <td className="py-2 pr-3 text-xs text-muted-foreground">
                       {m.subscriptionStatus ? t('chat.members.viaStripe', { status: m.subscriptionStatus }) : '—'}
                       {m.plan === 'subscriber' && m.planSource === 'manual' && <span className="ms-1">({t('chat.members.manual')})</span>}
+                    </td>
+                    <td className={cn('py-2 pr-3 tabular-nums', m.premiumSpend?.exhausted ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
+                      {m.premiumSpend ? usd(m.premiumSpend.monthUsd) : '—'}
                     </td>
                     <td className="py-2 pr-3 tabular-nums text-muted-foreground">{m.today.used} / {m.today.limit}</td>
                     <td className="py-2">

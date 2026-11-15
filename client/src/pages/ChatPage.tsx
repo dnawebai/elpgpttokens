@@ -20,7 +20,8 @@ import { MembersDialog } from '@/components/elp/members-dialog'
 import { UpgradeDialog } from '@/components/elp/upgrade-dialog'
 import { useBillingReturn } from '@/hooks/use-billing-return'
 import {
-  getMemberToken, setMemberToken, publicFetch, publicHeaders, publicUrl, quotaSummary, openBillingPortal, type PublicStatus,
+  getMemberToken, setMemberToken, publicFetch, publicHeaders, publicUrl, quotaSummary, openBillingPortal, allowanceSummary,
+  LIVE_KEEPALIVE_MS, type PublicStatus,
 } from '@/lib/public-api'
 import { appendDictation, hasTranscription, type TranscriptionModelRow } from '@/lib/transcription'
 import { readImageAttachment, IMAGE_MIME_TYPES, MAX_ATTACHMENTS } from '@/lib/attachments'
@@ -189,6 +190,14 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
   const subscription = pub?.member?.subscription
   const canUpgrade = billingOn && pub?.tier !== 'subscriber' && !activating
   const canManage = billingOn && !!pub?.member?.canManageBilling && !!subscription
+  const allowance = isPublic && pub?.tier === 'subscriber' ? allowanceSummary(pub.allowance) : null
+  // A subscriber whose allowance ran out: chat goes on, voice pauses.
+  const voicePaused = !!allowance?.exhausted
+  const voiceOffMessage = voicePaused ? t('chat.public.premium.paused') : t('chat.public.voiceSubscribersOnly')
+  const liveKeepAlive = useMemo(() => ({
+    everyMs: LIVE_KEEPALIVE_MS,
+    run: () => publicFetch('/api/public/realtime/extend', { method: 'POST', body: JSON.stringify({ sessions: 1 }) }),
+  }), [])
   const manageBilling = async () => {
     try {
       window.location.assign(await openBillingPortal())
@@ -275,7 +284,7 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
     const text = speakableText(markdown)
     if (!text || (!isPublic && !apiKey)) return
     if (!canSpeak) {
-      toast.info(isPublic ? t('chat.public.voiceSubscribersOnly') : t('chat.voiceUnavailable'))
+      toast.info(isPublic ? voiceOffMessage : t('chat.voiceUnavailable'))
       return
     }
     stopSpeaking()
@@ -302,7 +311,7 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
       setSpeaking(false)
       toast.error(t('chat.speechFailed', { reason: err instanceof Error ? err.message : String(err) }))
     }
-  }, [apiKey, canSpeak, stopSpeaking, t, isPublic])
+  }, [apiKey, canSpeak, stopSpeaking, t, isPublic, voiceOffMessage])
 
   const send = useCallback(async (override?: string, history: ChatTurn[] = turns) => {
     const text = (override ?? input).trim()
@@ -422,7 +431,18 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
               <UserRound className="size-3.5" /> {t(`chat.public.${pub.tier}`)}
             </span>
           )}
-          {isPublic && quota && (
+          {allowance && (allowance.exhausted ? (
+            <span className="text-xs text-amber-700 dark:text-amber-300">
+              {allowance.exhausted === 'day'
+                ? t('chat.public.premium.usedDay', { time: allowance.resetsAt.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' }) })
+                : t('chat.public.premium.usedMonth', { date: allowance.resetsAt.toLocaleDateString(locale, { month: 'short', day: 'numeric' }) })}
+            </span>
+          ) : (
+            <span className={cn('text-xs', allowance.pct <= 20 ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
+              {t(allowance.period === 'day' ? 'chat.public.premium.leftDay' : 'chat.public.premium.leftMonth', { pct: allowance.pct })}
+            </span>
+          ))}
+          {isPublic && quota && (!allowance || quota.low) && (
             <span className={cn('text-xs', quota.low ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
               {t('chat.public.remaining', { remaining: quota.remaining, limit: quota.limit })}
             </span>
@@ -577,7 +597,7 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
             )}
             <button type="button" onClick={() => (speaking ? stopSpeaking() : setSpeakOn(v => !v))} aria-pressed={speakOn}
               className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-1', speakOn && 'border-primary bg-primary/10')}
-              title={canSpeak ? undefined : isPublic ? t('chat.public.voiceSubscribersOnly') : t('chat.voiceUnavailable')}>
+              title={canSpeak ? undefined : isPublic ? voiceOffMessage : t('chat.voiceUnavailable')}>
               {speaking ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
               {speaking ? t('chat.stopSpeaking') : t('chat.speakReplies')}
             </button>
@@ -596,7 +616,8 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
         defaultLanguage={targetLang}
         {...(isPublic ? {
           handshake: req => publicFetch<{ sdp: string }>('/api/public/realtime/translate', { method: 'POST', body: JSON.stringify(req) }),
-          unavailableMessage: t('chat.public.subscribersOnly'),
+          unavailableMessage: voicePaused ? t('chat.public.premium.paused') : t('chat.public.subscribersOnly'),
+          keepAlive: liveKeepAlive,
         } : {})}
       />
       {isPublic && <AccountDialog open={accountOpen} onOpenChange={setAccountOpen} status={pub} onAuthed={onAuthed} />}

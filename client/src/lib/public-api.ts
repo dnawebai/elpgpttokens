@@ -31,6 +31,33 @@ export interface PublicStatus {
   limits?: Record<AccessTier, number>
   features?: { premium: boolean; voice: boolean; liveTranslate: boolean }
   billing?: { enabled: boolean }
+  /** Subscribers: what is left of the premium allowance (shares, never dollars). */
+  allowance?: PublicAllowance | null
+}
+
+export interface PublicAllowance {
+  /** Share left of the tighter ceiling, 0..1. */
+  remaining: number
+  period: 'day' | 'month'
+  exhausted: 'day' | 'month' | null
+  /** ISO time the tighter (or used-up) ceiling resets. */
+  resetsAt: string
+}
+
+/** The server charges the live interpreter ahead in 5-minute blocks
+ *  (LIVE_BLOCK_MINUTES); the next block is asked for a little early. */
+export const LIVE_KEEPALIVE_MS = 5 * 60_000 - 20_000
+
+/** "Premium 72% left today" data, clamped and safe on missing fields. */
+export function allowanceSummary(a: PublicAllowance | null | undefined): { pct: number; period: 'day' | 'month'; exhausted: 'day' | 'month' | null; resetsAt: Date } | null {
+  if (!a) return null
+  const resetsAt = new Date(a.resetsAt)
+  return {
+    pct: Math.max(0, Math.min(100, Math.round(a.remaining * 100))),
+    period: a.period === 'month' ? 'month' : 'day',
+    exhausted: a.exhausted === 'day' || a.exhausted === 'month' ? a.exhausted : null,
+    resetsAt: Number.isNaN(resetsAt.getTime()) ? new Date() : resetsAt,
+  }
 }
 
 export type BillingInterval = 'month' | 'year'

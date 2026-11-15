@@ -1456,7 +1456,15 @@
         "cancelled": "Pago cancelado. No se te cobró nada.",
         "failed": "No se pudo abrir la página de pago: {error}",
         "renews": "El periodo actual termina el {date}",
-        "pastDue": "El pago falló: actualiza tu tarjeta"
+        "pastDue": "El pago falló: actualiza tu tarjeta",
+        "perkFairUse": "Uso justo: cuando se agota la asignación premium, el chat sigue con modelos gratuitos hasta que se renueva."
+      },
+      "premium": {
+        "leftDay": "Premium: queda {pct}% hoy",
+        "leftMonth": "Premium: queda {pct}% este mes",
+        "usedDay": "Premium agotado por hoy · modelos gratuitos hasta las {time}",
+        "usedMonth": "Premium agotado este mes · modelos gratuitos hasta el {date}",
+        "paused": "La voz y el intérprete en vivo están en pausa hasta que se renueve tu asignación premium."
       }
     },
     "members": {
@@ -1477,7 +1485,10 @@
       "billing": "Facturación",
       "viaStripe": "Stripe: {status}",
       "manual": "asignado por ti",
-      "billingNote": "Las suscripciones de Stripe actualizan los planes solas y nunca anulan un plan que asignes aquí."
+      "billingNote": "Las suscripciones de Stripe actualizan los planes solas y nunca anulan un plan que asignes aquí.",
+      "premium": "Premium (mes)",
+      "allowance": "Asignación premium por suscriptor: {daily} al día, {monthly} al mes",
+      "unlimited": "ilimitada"
     }
   }
 }

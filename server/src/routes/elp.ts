@@ -8,6 +8,14 @@ import { searchAvailable } from '../services/search.js';
 import { startLiveTranslation, LiveTranslateError, liveTranslateModel } from '../services/live-translate.js';
 import type { SessionUser } from '../services/auth.js';
 import { listMembers, updateMember, quotaState, memberSubject, publicChatEnabled, dailyLimit } from '../services/members.js';
+import { premiumAllowance, allowanceLimits } from '../services/premium-usage.js';
+
+/** The configured allowance in USD; null means no cap. */
+function allowanceUsd() {
+  const { dailyMicros, monthlyMicros } = allowanceLimits();
+  const usd = (micros: number) => (Number.isFinite(micros) ? micros / 1e6 : null);
+  return { dailyUsd: usd(dailyMicros), monthlyUsd: usd(monthlyMicros) };
+}
 
 /**
  * Dashboard API behind /chat (requireAuth). The chat itself goes through the
@@ -95,7 +103,16 @@ elpRouter.get('/members', (_req: Request, res: Response) => {
   res.json({
     publicChatEnabled: publicChatEnabled(),
     limits: { visitor: dailyLimit('visitor'), free: dailyLimit('free'), subscriber: dailyLimit('subscriber') },
-    members: listMembers().map(m => ({ ...m, today: quotaState(memberSubject(m), m.plan) })),
+    allowance: allowanceUsd(),
+    members: listMembers().map(m => {
+      const premium = m.plan === 'subscriber' ? premiumAllowance(memberSubject(m)) : null;
+      return {
+        ...m,
+        today: quotaState(memberSubject(m), m.plan),
+        // Operator-only: estimated premium spend in USD (subscribers see shares).
+        premiumSpend: premium ? { todayUsd: premium.dayUsedMicros / 1e6, monthUsd: premium.monthUsedMicros / 1e6, exhausted: premium.exhausted } : null,
+      };
+    }),
   });
 });
 

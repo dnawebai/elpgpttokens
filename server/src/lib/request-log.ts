@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { getDb } from '../db/index.js';
 import { pruneRequestAnalytics } from '../services/request-retention.js';
 import { noteBudgetAlerts } from '../services/budget-alerts.js';
@@ -56,6 +57,25 @@ function resolveModelDbId(
     'SELECT id FROM models WHERE platform = ? AND model_id = ? AND endpoint_scope = ? LIMIT 1',
   ).get('custom', modelId, scope) as { id: number } | undefined;
   return row?.id ?? null;
+}
+
+/** One successful upstream call, as logged. */
+export interface MeteredUsage {
+  platform: string;
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+export type UsageMeter = (usage: MeteredUsage) => void;
+
+// A caller that needs to attribute spend to someone (the public chat meters a
+// subscriber's premium allowance) runs the gateway inside withUsageMeter();
+// every success row logged anywhere below it, across awaits and stream ends,
+// is reported to that meter. Outside a meter this costs one store lookup.
+const usageMeters = new AsyncLocalStorage<UsageMeter>();
+
+export function withUsageMeter<T>(meter: UsageMeter, fn: () => T): T {
+  return usageMeters.run(meter, fn);
 }
 
 // Append a row to the request analytics table. Shared by the chat proxy, the
@@ -163,6 +183,12 @@ export function logRequest(
     // compare this key's month usage to its caps and log a threshold event
     // (80%/100%, once each per month). Never throws.
     if (status === 'success' && keyId != null) noteBudgetAlerts(keyId);
+    if (status === 'success') {
+      const meter = usageMeters.getStore();
+      if (meter) {
+        try { meter({ platform, modelId, inputTokens, outputTokens }); } catch (err) { console.error('Usage meter failed:', err); }
+      }
+    }
     return true;
   } catch (e) {
     console.error('Failed to log request:', e);

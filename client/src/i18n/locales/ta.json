@@ -1456,7 +1456,15 @@
         "cancelled": "Checkout cancelled. Nothing was charged.",
         "failed": "Could not open the payment page: {error}",
         "renews": "Current period ends {date}",
-        "pastDue": "Payment failed: update your card"
+        "pastDue": "Payment failed: update your card",
+        "perkFairUse": "Fair use: when the premium allowance runs out, chat continues on free models until it resets."
+      },
+      "premium": {
+        "leftDay": "Premium {pct}% left today",
+        "leftMonth": "Premium {pct}% left this month",
+        "usedDay": "Premium used for today · free models until {time}",
+        "usedMonth": "Premium used this month · free models until {date}",
+        "paused": "Voice and the live interpreter are paused until your premium allowance resets."
       }
     },
     "members": {
@@ -1477,7 +1485,10 @@
       "billing": "Billing",
       "viaStripe": "Stripe: {status}",
       "manual": "set by you",
-      "billingNote": "Stripe subscriptions update plans automatically and never override a plan you set here."
+      "billingNote": "Stripe subscriptions update plans automatically and never override a plan you set here.",
+      "premium": "Premium (month)",
+      "allowance": "Premium allowance per subscriber: {daily} a day, {monthly} a month",
+      "unlimited": "unlimited"
     }
   }
 }

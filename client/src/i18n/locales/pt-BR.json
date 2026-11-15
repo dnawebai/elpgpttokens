@@ -1456,7 +1456,15 @@
         "cancelled": "Pagamento cancelado. Nada foi cobrado.",
         "failed": "Não foi possível abrir a página de pagamento: {error}",
         "renews": "O período atual termina em {date}",
-        "pastDue": "O pagamento falhou: atualize seu cartão"
+        "pastDue": "O pagamento falhou: atualize seu cartão",
+        "perkFairUse": "Uso justo: quando a cota premium acaba, o chat continua com modelos gratuitos até ser renovada."
+      },
+      "premium": {
+        "leftDay": "Premium: resta {pct}% hoje",
+        "leftMonth": "Premium: resta {pct}% este mês",
+        "usedDay": "Premium esgotado hoje · modelos gratuitos até {time}",
+        "usedMonth": "Premium esgotado este mês · modelos gratuitos até {date}",
+        "paused": "A voz e o intérprete ao vivo estão pausados até sua cota premium ser renovada."
       }
     },
     "members": {
@@ -1477,7 +1485,10 @@
       "billing": "Cobrança",
       "viaStripe": "Stripe: {status}",
       "manual": "definido por você",
-      "billingNote": "As assinaturas da Stripe atualizam os planos sozinhas e nunca substituem um plano definido aqui."
+      "billingNote": "As assinaturas da Stripe atualizam os planos sozinhas e nunca substituem um plano definido aqui.",
+      "premium": "Premium (mês)",
+      "allowance": "Cota premium por assinante: {daily} por dia, {monthly} por mês",
+      "unlimited": "ilimitada"
     }
   }
 }

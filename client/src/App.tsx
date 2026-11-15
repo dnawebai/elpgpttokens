@@ -472,19 +472,23 @@ function AppShell({ children }: { children: ReactNode }) {
 function PublicChatGate({ children }: { children: ReactNode }) {
   const location = useLocation()
   const onChat = location.pathname === '/chat'
+  // On a dedicated host (chat.example.com) the root is the front door: a
+  // visitor there is sent to the chat, the operator still gets the dashboard.
+  const onRoot = location.pathname === '/'
+  const checks = onChat || onRoot
   const auth = useQuery<{ authenticated: boolean }>({
     queryKey: ['auth-status'],
     queryFn: () => apiFetch('/api/auth/status'),
     retry: false,
-    enabled: onChat,
+    enabled: checks,
   })
   const pub = useQuery<PublicStatus>({
     queryKey: ['public-chat-enabled'],
     queryFn: () => publicFetch('/api/public/status'),
     retry: false,
-    enabled: onChat,
+    enabled: checks,
   })
-  if (!onChat) return <>{children}</>
+  if (!checks) return <>{children}</>
   if (auth.isLoading || pub.isLoading) {
     return (
       <div className="flex h-dvh items-center justify-center bg-background">
@@ -493,6 +497,7 @@ function PublicChatGate({ children }: { children: ReactNode }) {
     )
   }
   if (auth.data?.authenticated || !pub.data?.enabled) return <>{children}</>
+  if (onRoot) return <Navigate to={`/chat${location.search}`} replace />
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
       <PageBoundary>

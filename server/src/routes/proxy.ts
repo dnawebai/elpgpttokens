@@ -24,7 +24,7 @@ import { sanitizeProviderErrorMessage } from '../lib/error-redaction.js';
 import { rescueInlineToolCalls, startsWithDialectMarker, couldBecomeDialectMarker, containsDialectMarker } from '../lib/tool-call-rescue.js';
 import { getContextHandoffMode, recordIncomingMessages, maybeInjectContextHandoff, recordSuccessfulModel, hasPriorModel, HANDOFF_MAX_TOKENS } from '../services/context-handoff.js';
 import { isFusionModel, runFusion, fusionConfigSchema, FusionError, FUSION_MODEL_ID } from '../services/fusion.js';
-import { isElpAutoModel, decideElpRoute, encodeRouteHeader, searchGroundingPrompt, latestUserText, buildImagePrompt, ELP_AUTO_MODEL, type ElpDecision } from '../services/elp-router.js';
+import { isElpAutoModel, decideElpRoute, encodeRouteHeader, searchGroundingPrompt, latestUserText, buildImagePrompt, ELP_AUTO_MODEL, type ElpDecision, type ElpRouteTable } from '../services/elp-router.js';
 import { isRetryableError, isPaymentRequiredError, isModelNotFoundError, isModelAccessForbiddenError, isClientAbortError, newClientAbortError, newHedgeAbortError, isUpstreamClassificationOutput } from '../lib/error-classify.js';
 import { logRequest } from '../lib/request-log.js';
 import { observeServedModel } from '../lib/served-model.js';
@@ -2264,7 +2264,8 @@ proxyRouter.post('/chat/completions', async (req: Request, res: Response) => {
   if (isElpAutoModel(requestedModel)) {
     // Public free tiers set this on the request in-process (routes/public.ts);
     // it is never read from a header, so a client cannot grant itself premium.
-    elpDecision = decideElpRoute(messages, { allowPremium: (req as Request & { elpAllowPremium?: boolean }).elpAllowPremium !== false });
+    const elpReq = req as Request & { elpAllowPremium?: boolean; elpRouteTable?: ElpRouteTable };
+    elpDecision = decideElpRoute(messages, { allowPremium: elpReq.elpAllowPremium !== false, table: elpReq.elpRouteTable });
     if (elpDecision.info.kind === 'image') {
       res.setHeader('X-ELP-Route', encodeRouteHeader(elpDecision.info));
       await serveElpImage(res, elpDecision, messages, Boolean(stream), requestGroupId);

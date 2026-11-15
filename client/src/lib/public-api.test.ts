@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   getMemberToken, setMemberToken, publicHeaders, publicFetch, PublicApiError, quotaSummary,
-  formatPrice, readBillingReturn, startCheckout, openBillingPortal,
+  formatPrice, readBillingReturn, startCheckout, openBillingPortal, allowanceSummary,
 } from './public-api'
 
 afterEach(() => {
@@ -76,5 +76,20 @@ describe('billing helpers', () => {
 
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ url: 'javascript:alert(1)' }), { status: 200 }))
     await expect(openBillingPortal()).rejects.toBeInstanceOf(PublicApiError)
+  })
+})
+
+describe('allowanceSummary', () => {
+  it('turns the allowance into a percentage and a reset time', () => {
+    const s = allowanceSummary({ remaining: 0.724, period: 'day', exhausted: null, resetsAt: '2026-11-16T00:00:00.000Z' })
+    expect(s).toMatchObject({ pct: 72, period: 'day', exhausted: null })
+    expect(s?.resetsAt.toISOString()).toBe('2026-11-16T00:00:00.000Z')
+    expect(allowanceSummary({ remaining: 0, period: 'month', exhausted: 'month', resetsAt: '2026-12-01T00:00:00.000Z' })).toMatchObject({ pct: 0, exhausted: 'month' })
+  })
+
+  it('clamps bad values and tolerates a missing allowance', () => {
+    expect(allowanceSummary({ remaining: 1.7, period: 'day', exhausted: null, resetsAt: 'nonsense' })?.pct).toBe(100)
+    expect(allowanceSummary(null)).toBeNull()
+    expect(allowanceSummary(undefined)).toBeNull()
   })
 })

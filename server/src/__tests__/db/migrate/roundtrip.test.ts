@@ -54,6 +54,7 @@ const KEY_LAST_HEALTHY_AT_FILENAME = '20261020_000001_key_last_healthy_at.ts';
 const CLOUDFLARE_NEURON_USAGE_FILENAME = '20261104_000001_cloudflare_neuron_usage.ts';
 const ELPGPT_MEMBERS_FILENAME = '20261115_000001_elpgpt_members.ts';
 const ELPGPT_MEMBER_BILLING_FILENAME = '20261115_000002_elpgpt_member_billing.ts';
+const ELPGPT_PREMIUM_SPEND_FILENAME = '20261115_000003_elpgpt_premium_spend.ts';
 
 interface SchemaRow {
   type: string;
@@ -155,6 +156,7 @@ describe('migration round trip', () => {
         CLOUDFLARE_NEURON_USAGE_FILENAME,
         ELPGPT_MEMBERS_FILENAME,
         ELPGPT_MEMBER_BILLING_FILENAME,
+        ELPGPT_PREMIUM_SPEND_FILENAME,
       ]);
     } finally {
       db.close();

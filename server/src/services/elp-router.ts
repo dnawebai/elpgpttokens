@@ -59,6 +59,26 @@ export const DEFAULT_ROUTES: ElpRouteTable = {
   chat: [{ platform: 'openai', model: GPT }, { platform: 'anthropic', model: CLAUDE }],
 };
 
+/**
+ * Cost-efficient ladders for public chat subscribers (override with
+ * ELPGPT_SUBSCRIBER_ROUTES, same format as ELPGPT_ROUTES). A flat-fee plan
+ * can't pay frontier prices for every message, so each intent gets the
+ * cheapest model that does it well: everyday chat and translation on Haiku or
+ * Luna (about a fiftieth of Opus's price), writing and vision on Sonnet, code
+ * and reasoning on Sonnet at high effort. Opus stays in the operator's own
+ * chat. Search and images are the same as the default routes.
+ */
+export const SUBSCRIBER_ROUTES: ElpRouteTable = {
+  web_search: [{ platform: 'perplexity', model: 'fast' }],
+  image_generation: [{ platform: 'openai', model: 'gpt-image-2.6-flare' }],
+  code: [{ platform: 'anthropic', model: 'claude-sonnet-5-5', effort: 'high' }, { platform: 'openai', model: GPT, effort: 'high' }],
+  reasoning: [{ platform: 'anthropic', model: 'claude-sonnet-5-5', effort: 'high' }, { platform: 'openai', model: GPT, effort: 'high' }],
+  writing: [{ platform: 'anthropic', model: 'claude-sonnet-5-5' }, { platform: 'openai', model: 'gpt-6.1-terra' }],
+  vision: [{ platform: 'anthropic', model: 'claude-sonnet-5-5' }, { platform: 'openai', model: 'gpt-6.1-terra' }],
+  translation: [{ platform: 'openai', model: 'gpt-6-luna' }, { platform: 'anthropic', model: 'claude-haiku-5-5' }],
+  chat: [{ platform: 'anthropic', model: 'claude-haiku-5-5' }, { platform: 'openai', model: 'gpt-6-luna' }],
+};
+
 /** Catalog metadata for the premium chat models the default routes name. A
  *  route that names a model not listed here still works: it is seeded with
  *  conservative defaults (no vision/tools flags, unknown context window). */
@@ -77,6 +97,7 @@ const CHAT_MODEL_SPECS: Record<string, ChatModelSpec> = {
   'anthropic:claude-haiku-5-5': { displayName: 'Claude Haiku 5.5', contextWindow: 1_000_000, vision: true, tools: true, intelligenceRank: 4, speedRank: 1 },
   'openai:gpt-6-astra': { displayName: 'GPT-6 Astra', contextWindow: null, vision: true, tools: true, intelligenceRank: 1, speedRank: 3 },
   'openai:gpt-6.1-sol': { displayName: 'GPT-6.1 Sol', contextWindow: null, vision: true, tools: true, intelligenceRank: 2, speedRank: 2 },
+  'openai:gpt-6.1-terra': { displayName: 'GPT-6.1 Terra', contextWindow: null, vision: true, tools: true, intelligenceRank: 3, speedRank: 2 },
   'openai:gpt-6-luna': { displayName: 'GPT-6 Luna', contextWindow: null, vision: true, tools: true, intelligenceRank: 4, speedRank: 1 },
   'perplexity:fast': { displayName: 'Perplexity Search', contextWindow: null, vision: true, tools: false, intelligenceRank: 3, speedRank: 1 },
   'perplexity:low': { displayName: 'Perplexity Pro Search', contextWindow: null, vision: true, tools: false, intelligenceRank: 2, speedRank: 2 },
@@ -101,20 +122,24 @@ const ELP_PLATFORMS = new Set<string>(['anthropic', 'openai', 'perplexity'] sati
  * Malformed JSON or entries are ignored with a warning, never fatal: a typo in
  * an env var must not take routing down.
  */
-export function loadRouteTable(raw: string | undefined = process.env.ELPGPT_ROUTES): ElpRouteTable {
-  const table: ElpRouteTable = { ...DEFAULT_ROUTES };
+export function loadRouteTable(
+  raw: string | undefined = process.env.ELPGPT_ROUTES,
+  defaults: ElpRouteTable = DEFAULT_ROUTES,
+  envName = 'ELPGPT_ROUTES',
+): ElpRouteTable {
+  const table: ElpRouteTable = { ...defaults };
   if (!raw?.trim()) return table;
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    console.warn('[elpgpt] ELPGPT_ROUTES is not valid JSON; using default routes');
+    console.warn(`[elpgpt] ${envName} is not valid JSON; using default routes`);
     return table;
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return table;
   for (const [intent, targets] of Object.entries(parsed as Record<string, unknown>)) {
     if (!isElpIntent(intent) || !Array.isArray(targets)) {
-      console.warn(`[elpgpt] ELPGPT_ROUTES: ignoring unknown intent '${intent}'`);
+      console.warn(`[elpgpt] ${envName}: ignoring unknown intent '${intent}'`);
       continue;
     }
     const clean = targets
@@ -130,14 +155,23 @@ export function loadRouteTable(raw: string | undefined = process.env.ELPGPT_ROUT
   return table;
 }
 
+/** Subscriber ladders: SUBSCRIBER_ROUTES with ELPGPT_SUBSCRIBER_ROUTES overrides. */
+export function loadSubscriberRouteTable(raw: string | undefined = process.env.ELPGPT_SUBSCRIBER_ROUTES): ElpRouteTable {
+  return loadRouteTable(raw, SUBSCRIBER_ROUTES, 'ELPGPT_SUBSCRIBER_ROUTES');
+}
+
 /**
- * Make sure every model the route table names exists in the catalog. Rows are
+ * Make sure every model the route tables name exists in the catalog. Rows are
  * written with source='user' (catalog sync deletes source='catalog' rows it
  * does not publish) and a DISABLED fallback_config row, which keeps them out of
  * plain `auto` and out of every profile backfill (profiles copy that flag).
  * Existing rows are never modified, so an operator's edits stick.
  */
-export function ensureElpCatalog(db: Db = getDb(), table: ElpRouteTable = loadRouteTable()): void {
+export function ensureElpCatalog(
+  db: Db = getDb(),
+  tables: ElpRouteTable | ElpRouteTable[] = [loadRouteTable(), loadSubscriberRouteTable()],
+): void {
+  const tableList = Array.isArray(tables) ? tables : [tables];
   const findModel = db.prepare('SELECT id FROM models WHERE platform = ? AND model_id = ?');
   const insertModel = db.prepare(`
     INSERT INTO models (platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
@@ -155,7 +189,7 @@ export function ensureElpCatalog(db: Db = getDb(), table: ElpRouteTable = loadRo
 
   db.transaction(() => {
     const seen = new Set<string>();
-    for (const intent of ELP_INTENTS) {
+    for (const table of tableList) for (const intent of ELP_INTENTS) {
       if (intent === 'image_generation') continue;
       for (const target of table[intent]) {
         if (!ELP_PLATFORMS.has(target.platform)) continue; // free-pool targets already exist

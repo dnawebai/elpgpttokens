@@ -24,9 +24,12 @@ interface LiveInterpreterProps {
   handshake?: StartLiveOptions['handshake']
   /** Message shown when unavailable; defaults to "needs an OpenAI key". */
   unavailableMessage?: string
+  /** Public chat: ask the server for the next block of minutes while live.
+   *  A refusal (allowance used up) stops the interpreter with its reason. */
+  keepAlive?: { everyMs: number; run: () => Promise<unknown> }
 }
 
-export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage = 'en', handshake, unavailableMessage }: LiveInterpreterProps) {
+export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage = 'en', handshake, unavailableMessage, keepAlive }: LiveInterpreterProps) {
   const { t } = useI18n()
   const [language, setLanguage] = useState(defaultLanguage)
   const [source, setSource] = useState<LiveSource>('mic')
@@ -56,6 +59,23 @@ export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage
   useEffect(() => {
     translatedRef.current?.scrollTo({ top: translatedRef.current.scrollHeight })
   }, [transcript.translated])
+
+  useEffect(() => {
+    if (status !== 'live' || !keepAlive) return
+    const timer = window.setInterval(() => {
+      keepAlive.run().catch((err: unknown) => {
+        window.clearInterval(timer)
+        const session = sessionRef.current
+        sessionRef.current = null
+        const reason = err instanceof Error ? err.message : String(err)
+        void (session ? session.stop() : Promise.resolve()).then(() => {
+          setStatus('error')
+          setDetail(reason)
+        })
+      })
+    }, keepAlive.everyMs)
+    return () => window.clearInterval(timer)
+  }, [status, keepAlive])
 
   const start = async () => {
     setTranscript(EMPTY_TRANSCRIPT)

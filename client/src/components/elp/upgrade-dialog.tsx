@@ -52,6 +52,7 @@ export function UpgradeDialog({ open, onOpenChange, status, onNeedAccount }: Upg
     t('chat.public.billing.perkModels'),
     t('chat.public.billing.perkMessages', { limit: status?.limits?.subscriber ?? 0 }),
     t('chat.public.billing.perkVoice'),
+    t('chat.public.billing.perkFairUse'),
   ]
 
   return (

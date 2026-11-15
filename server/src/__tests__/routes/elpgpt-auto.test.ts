@@ -144,9 +144,14 @@ describe('ensureElpCatalog', () => {
       FROM models m JOIN fallback_config f ON f.model_db_id = m.id
       WHERE m.platform IN ('anthropic', 'openai', 'perplexity') ORDER BY m.platform, m.model_id
     `).all();
+    // Default routes plus the cost-efficient subscriber routes, all kept out of plain auto.
     expect(rows).toEqual([
+      { platform: 'anthropic', model_id: 'claude-haiku-5-5', source: 'user', chain_enabled: 0 },
       { platform: 'anthropic', model_id: 'claude-opus-5-5', source: 'user', chain_enabled: 0 },
+      { platform: 'anthropic', model_id: 'claude-sonnet-5-5', source: 'user', chain_enabled: 0 },
+      { platform: 'openai', model_id: 'gpt-6-luna', source: 'user', chain_enabled: 0 },
       { platform: 'openai', model_id: 'gpt-6.1-sol', source: 'user', chain_enabled: 0 },
+      { platform: 'openai', model_id: 'gpt-6.1-terra', source: 'user', chain_enabled: 0 },
       { platform: 'perplexity', model_id: 'fast', source: 'user', chain_enabled: 0 },
     ]);
     const media = getDb().prepare("SELECT model_id, modality FROM media_models WHERE platform = 'openai' ORDER BY model_id").all();

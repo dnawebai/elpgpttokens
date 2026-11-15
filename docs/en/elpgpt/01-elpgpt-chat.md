@@ -141,9 +141,55 @@ screen; the operator still gets the full dashboard chat.
 |---|---|---|---|
 | Guest (no account) | Free models | `ELPGPT_VISITOR_DAILY_LIMIT` (10) | |
 | Free member | Free models | `ELPGPT_FREE_DAILY_LIMIT` (30) | |
-| Subscriber | Claude, ChatGPT, Perplexity, GPT Image | `ELPGPT_SUBSCRIBER_DAILY_LIMIT` (300) | Voice, live interpreter |
+| Subscriber | Claude, ChatGPT, Perplexity, GPT Image, within a premium allowance | `ELPGPT_SUBSCRIBER_DAILY_LIMIT` (300) | Voice, live interpreter |
 
-Every tier gets the same auto-routing; free tiers just route onto the free pool.
+Every tier gets the same auto-routing; free tiers just route onto the free pool,
+and subscribers get cost-efficient premium routes (see
+[Premium allowance](#premium-allowance-fair-use)). Every tier sends only the
+recent part of a conversation: the newest turns that fit
+`ELPGPT_PUBLIC_CONTEXT_CHARS` (48,000 characters, about 12K tokens), plus any
+system instructions and always the latest message. Each message resends the
+history, so this is what keeps long chats from getting expensive.
+
+### Premium allowance (fair use)
+
+A subscription is a flat fee, but premium calls cost real money and their
+costs differ by orders of magnitude. With API prices as of November 2026, an
+everyday chat on Haiku or Luna costs well under a cent. A high-effort coding
+answer on Sonnet costs a few cents, the same on Opus around ten, an image about
+five, and a minute of live interpreting about three. Three layers keep a
+subscription profitable without making it feel limited:
+
+1. **Cost-efficient routes.** Subscribers get `SUBSCRIBER_ROUTES`
+   (`server/src/services/elp-router.ts`). Everyday chat and translation run on
+   Claude Haiku 5.5 or GPT-6 Luna, writing and images-in-questions on Claude
+   Sonnet 5.5, and code and reasoning on Sonnet at high effort. Search and
+   image creation are the same as the default routes. Opus stays in the
+   operator's own chat. Override with `ELPGPT_SUBSCRIBER_ROUTES`, which uses the
+   same format as `ELPGPT_ROUTES`.
+2. **An allowance in estimated provider cost:** `ELPGPT_PREMIUM_DAILY_USD`
+   (default `1`) and `ELPGPT_PREMIUM_MONTHLY_USD` (default `4`). Tokens are
+   costed from the usage the gateway logs for every call, with a 20% margin;
+   images, dictation and live interpreting are charged fixed estimates. The
+   daily ceiling keeps one afternoon from burning the month. The monthly one
+   keeps heavy users profitable: $4 is about half of what a $96/year plan
+   brings in after card fees. The prices behind this live in
+   `server/src/services/premium-usage.ts`.
+3. **A soft landing.** When the allowance runs out, the subscriber keeps
+   chatting on the free models until it resets (midnight UTC, or the 1st of the
+   month), so "unlimited messages" stays true. Voice and the live interpreter
+   pause until then. Subscribers see only a share ("Premium 72% left today") and
+   the reset time, never dollar amounts. The operator sees each subscriber's
+   spend in **Chat → Members**.
+
+The live interpreter's audio goes straight from the browser to OpenAI, so its
+minutes can't be measured here. They are charged ahead in 5-minute blocks: one
+when a session starts, and another as the interpreter asks to keep going
+(`/api/public/realtime/extend`). When a block no longer fits, the interpreter
+stops and says why. A modified client could skip those requests, so treat the
+interpreter as the least tightly bounded cost.
+
+Set either ceiling to `unlimited` to remove it.
 Guests can sign up from the chat (`ELPGPT_PUBLIC_SIGNUP=0` closes sign-ups), and
 `ELPGPT_VISITOR_DAILY_LIMIT=0` requires an account to chat at all.
 
