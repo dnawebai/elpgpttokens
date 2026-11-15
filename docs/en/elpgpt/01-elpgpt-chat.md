@@ -224,7 +224,10 @@ localhost:3001/api/public/billing/webhook`) to try it locally.
 - `active`, `trialing` and `past_due` (while Stripe retries the card) keep the
   Subscriber plan; anything else returns the member to Free.
 - Only subscriptions to the configured prices count, so other products on the
-  same Stripe account are ignored.
+  same Stripe account are ignored. Another app may even sell the **same** price
+  on the same account (for example an existing site's Pro plan): its checkouts
+  are ignored too, because only sessions ELPGPT created (tagged with the member
+  id) are trusted, and only customers ELPGPT created are matched to members.
 - A plan the operator set by hand in **Chat → Members** is never changed by
   billing.
 - A webhook that fails to process answers 500, so Stripe delivers it again.

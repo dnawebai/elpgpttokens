@@ -138,6 +138,9 @@ export async function createCheckout(member: Member, interval: BillingInterval, 
     mode: 'subscription',
     customer,
     client_reference_id: String(member.id),
+    // Marks the session as ELPGPT's own: other apps on the same Stripe account
+    // may sell the same price and send their sessions to this webhook too.
+    metadata: { elp_member_id: String(member.id) },
     line_items: [{ price, quantity: 1 }],
     subscription_data: { metadata: { elp_member_id: String(member.id) } },
     allow_promotion_codes: true,
@@ -205,7 +208,11 @@ export async function handleStripeWebhook(rawBody: Buffer | string, signature: s
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
     if (session.mode !== 'subscription') return { handled: false, type: event.type };
-    const member = getMember(Number(session.client_reference_id));
+    // Only sessions ELPGPT created: another app's client_reference_id could be
+    // a number that happens to match a member id.
+    const ownerId = session.metadata?.elp_member_id;
+    if (!ownerId || ownerId !== session.client_reference_id) return { handled: false, type: event.type };
+    const member = getMember(Number(ownerId));
     const cust = customerId(session.customer as string | { id: string } | null);
     if (member && cust && !member.stripeCustomerId) setStripeCustomer(member.id, cust);
     const subscription = customerId(session.subscription as string | { id: string } | null);

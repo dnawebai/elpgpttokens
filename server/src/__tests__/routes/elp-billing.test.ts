@@ -187,6 +187,7 @@ describe('billing (configured)', () => {
     expect(session.get('mode')).toBe('subscription');
     expect(session.get('customer')).toBe('cus_1');
     expect(session.get('client_reference_id')).toBe(String(row.id));
+    expect(session.get('metadata[elp_member_id]')).toBe(String(row.id));
     expect(session.get('line_items[0][price]')).toBe('price_year');
     expect(session.get('subscription_data[metadata][elp_member_id]')).toBe(String(row.id));
     expect(session.get('success_url')).toBe('https://elpgpt.com/chat?billing=success');
@@ -257,11 +258,28 @@ describe('billing (configured)', () => {
     const { id } = memberRow();
     subscription('sub_9', { customer: 'cus_other', status: 'active' });
     const res = await sendEvent('checkout.session.completed', {
-      id: 'cs_9', object: 'checkout.session', mode: 'subscription', client_reference_id: String(id), customer: 'cus_other', subscription: 'sub_9',
+      id: 'cs_9', object: 'checkout.session', mode: 'subscription', client_reference_id: String(id),
+      metadata: { elp_member_id: String(id) }, customer: 'cus_other', subscription: 'sub_9',
     });
     expect(res.body).toEqual({ received: true, handled: true });
     expect(memberRow()).toMatchObject({ stripe_customer_id: 'cus_other', plan: 'subscriber' });
     expect((await call('GET', '/api/public/status', { headers: member(token) })).body.tier).toBe('subscriber');
+  });
+
+  it('ignores another app\'s checkout for the same price, even with a matching numeric id', async () => {
+    mockStripe();
+    const token = await signup();
+    const { id } = memberRow();
+    // e.g. the existing ELP GPT Pro site selling the shared price to its own user #id.
+    subscription('sub_other_app', { customer: 'cus_other_app', status: 'active' });
+    const res = await sendEvent('checkout.session.completed', {
+      id: 'cs_other', object: 'checkout.session', mode: 'subscription', client_reference_id: String(id),
+      metadata: { app: 'elp-gpt' }, customer: 'cus_other_app', subscription: 'sub_other_app',
+    });
+    expect(res.body).toEqual({ received: true, handled: false });
+    await sendEvent('customer.subscription.created', { id: 'sub_other_app', object: 'subscription' });
+    expect(memberRow()).toMatchObject({ plan: 'free', stripe_customer_id: null, stripe_subscription_id: null });
+    expect((await call('GET', '/api/public/status', { headers: member(token) })).body.tier).toBe('free');
   });
 
   it('never revokes a plan the operator granted by hand', async () => {
