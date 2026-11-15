@@ -1388,6 +1388,31 @@
       "translation": "Tradução",
       "vision": "Visão",
       "chat": "Chat"
+    },
+    "live": {
+      "open": "Intérprete ao vivo",
+      "title": "Intérprete ao vivo",
+      "description": "Fale em qualquer língua, ou reproduza um vídeo num separador do navegador, e ouça a tradução um instante depois.",
+      "needsOpenAI": "A tradução ao vivo usa o modelo de tradução em tempo real da OpenAI e precisa de uma chave da OpenAI.",
+      "translateInto": "Traduzir para",
+      "source": "Fonte de áudio",
+      "sourceMic": "Microfone",
+      "sourceTab": "Separador do navegador",
+      "original": "Original",
+      "translation": "Tradução",
+      "failed": "A tradução ao vivo parou: {reason}",
+      "unsupported": "Este navegador não consegue captar essa fonte de áudio. Experimente a versão mais recente do Chrome ou do Edge.",
+      "mute": "Silenciar",
+      "unmute": "Ativar som",
+      "start": "Começar",
+      "stop": "Parar",
+      "status": {
+        "idle": "Pronto",
+        "connecting": "A ligar…",
+        "live": "Em direto: a ouvir e a traduzir",
+        "stopping": "A terminar…",
+        "error": "Parado"
+      }
     }
   }
 }

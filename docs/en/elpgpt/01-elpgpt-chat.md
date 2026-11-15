@@ -87,9 +87,34 @@ attached.
   answer through the text-to-speech pool. With it on, a spoken message is sent
   straight away: a hands-free conversation. Combined with Translate, it works as
   a turn-by-turn interpreter.
+- **Live interpreter**: real-time speech-to-speech translation with OpenAI's
+  `gpt-realtime-translate`. Pick a target language and an audio source (your
+  microphone, or a browser tab such as a video call or YouTube) and hear the
+  translation a moment later, with original and translated transcripts on
+  screen. The source language is detected automatically. See
+  [How the live interpreter connects](#how-the-live-interpreter-connects).
 - **Images**: generated images show inline with a download link; attach images
   for vision questions.
 - **Model**: Auto by default, or pin one premium model.
+
+## How the live interpreter connects
+
+1. The browser captures audio and creates a WebRTC offer with an `oai-events`
+   data channel.
+2. It sends the offer and target language to `POST /api/elp/realtime/translate`
+   (dashboard session).
+3. The server reserves an OpenAI key from the pool and mints a short-lived
+   translation client secret (`/v1/realtime/translations/client_secrets`). It
+   posts the offer with that secret to `/v1/realtime/translations/calls` and
+   returns only the SDP answer.
+4. Audio then flows directly between the browser and OpenAI. Translated speech
+   arrives as an audio track, and transcripts arrive on the data channel. Stop
+   sends `session.close` so pending translation is flushed before hanging up.
+
+Neither the operator's key nor the client secret ever reaches the browser, and
+the dashboard CSP (`connect-src 'self'`) stays as it is. A rejected key is
+skipped in favor of the next one. Set `ELPGPT_LIVE_TRANSLATE_MODEL` to use a
+different model id. OpenAI bills realtime translation to the operator's key.
 
 ## Provider notes
 
@@ -112,6 +137,6 @@ attached.
   key, and that key must never be shipped to visitors' browsers. Serving
   elpgpt.com/chat to the public needs user accounts, per-user quotas and billing
   in front of `elpgpt-auto`.
-- **Streaming speech-to-speech.** Voice is turn-based today. OpenAI's
-  `gpt-realtime-translate` (Realtime API over WebRTC) is the path to live
-  interpretation.
+- **Two-way conversations.** The live interpreter translates one direction at a
+  time, into the chosen language. A two-person call needs one session per
+  direction with separate audio tracks, as OpenAI recommends.

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Brain, Code, Download, ExternalLink, Eye, Image as ImageIcon, KeyRound, Languages, MessageCircle,
-  Paperclip, PenLine, Plus, RotateCcw, Search, Send, Sparkles, Square, Volume2, VolumeX, X,
+  AudioLines, Paperclip, PenLine, Plus, RotateCcw, Search, Send, Sparkles, Square, Volume2, VolumeX, X,
 } from 'lucide-react'
 import type { ElpRouteInfo } from '@freellmapi/shared/types'
 import { apiFetch } from '@/lib/api'
@@ -14,6 +14,7 @@ import { Markdown } from '@/components/markdown'
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { DictationButton } from '@/components/playground/dictation-button'
+import { LiveInterpreter } from '@/components/elp/live-interpreter'
 import { appendDictation, hasTranscription, type TranscriptionModelRow } from '@/lib/transcription'
 import { readImageAttachment, IMAGE_MIME_TYPES, MAX_ATTACHMENTS } from '@/lib/attachments'
 import {
@@ -30,6 +31,7 @@ import {
 // While the user types, /api/elp/route previews that decision as a badge.
 
 interface ElpStatus {
+  liveTranslate?: { available: boolean; model: string }
   providers: { platform: 'anthropic' | 'openai' | 'perplexity'; connected: boolean }[]
   searchFallback: boolean
   routes: { intent: ElpIntent; route: ElpRouteInfo }[]
@@ -168,6 +170,7 @@ export default function ChatPage() {
   const [targetLang, setTargetLang] = useState('es')
   const [speakOn, setSpeakOn] = useState(false)
   const [speaking, setSpeaking] = useState(false)
+  const [liveOpen, setLiveOpen] = useState(false)
   const [preview, setPreview] = useState<ElpRoutePreview | null>(null)
   const [busy, setBusy] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -466,10 +469,20 @@ export default function ChatPage() {
               {speaking ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
               {speaking ? t('chat.stopSpeaking') : t('chat.speakReplies')}
             </button>
+            <button type="button" onClick={() => setLiveOpen(true)}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1">
+              <AudioLines className="size-3.5" /> {t('chat.live.open')}
+            </button>
             {speakOn && <span className="text-muted-foreground">{t('chat.voiceHint')}</span>}
           </div>
         </div>
       </div>
+      <LiveInterpreter
+        open={liveOpen}
+        onOpenChange={setLiveOpen}
+        available={status?.liveTranslate?.available ?? false}
+        defaultLanguage={targetLang}
+      />
     </div>
   )
 }

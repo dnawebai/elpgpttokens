@@ -5,6 +5,8 @@ import { getDb } from '../db/index.js';
 import { classifyIntent, ELP_INTENTS } from '../services/intent.js';
 import { loadRouteTable, resolveIntentRoute, ELP_AUTO_MODEL } from '../services/elp-router.js';
 import { searchAvailable } from '../services/search.js';
+import { startLiveTranslation, LiveTranslateError, liveTranslateModel } from '../services/live-translate.js';
+import type { SessionUser } from '../services/auth.js';
 
 /**
  * Dashboard API behind /chat (requireAuth). The chat itself goes through the
@@ -25,6 +27,7 @@ elpRouter.get('/status', (_req: Request, res: Response) => {
   const table = loadRouteTable();
   res.json({
     model: ELP_AUTO_MODEL,
+    liveTranslate: { available: (keys.get('openai') ?? 0) > 0, model: liveTranslateModel() },
     providers: PREMIUM_PLATFORMS.map(platform => ({ platform, connected: (keys.get(platform) ?? 0) > 0 })),
     searchFallback: searchAvailable(),
     routes: ELP_INTENTS.map(intent => ({
@@ -54,4 +57,32 @@ elpRouter.post('/route', (req: Request, res: Response) => {
   });
   const decision = resolveIntentRoute(intent);
   res.json({ ...decision.info, targetLanguage: intent.targetLanguage ?? null });
+});
+
+/**
+ * Live interpreter handshake: the browser sends its WebRTC SDP offer and the
+ * target language, the server mints a short-lived OpenAI translation session
+ * and returns the SDP answer. No key or client secret reaches the browser;
+ * audio then flows directly between the browser and OpenAI.
+ */
+elpRouter.post('/realtime/translate', async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: SessionUser }).user;
+  try {
+    const answer = await startLiveTranslation({
+      sdp: req.body?.sdp,
+      targetLanguage: req.body?.targetLanguage,
+      source: req.body?.source,
+      userKey: user ? String(user.userId) : 'operator',
+    });
+    res.json(answer);
+  } catch (err) {
+    const status = err instanceof LiveTranslateError ? err.status : 502;
+    res.status(status).json({
+      error: {
+        message: err instanceof Error ? err.message : 'Live translation failed',
+        type: status >= 500 ? 'server_error' : 'invalid_request_error',
+        ...(err instanceof LiveTranslateError && err.code ? { code: err.code } : {}),
+      },
+    });
+  }
 });

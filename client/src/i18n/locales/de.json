@@ -1388,6 +1388,31 @@
       "translation": "Translation",
       "vision": "Vision",
       "chat": "Chat"
+    },
+    "live": {
+      "open": "Live interpreter",
+      "title": "Live interpreter",
+      "description": "Speak in any language, or play a video in a browser tab, and hear it translated a moment later.",
+      "needsOpenAI": "Live translation uses OpenAI's realtime translation model and needs an OpenAI key.",
+      "translateInto": "Translate into",
+      "source": "Audio source",
+      "sourceMic": "Microphone",
+      "sourceTab": "Browser tab",
+      "original": "Original",
+      "translation": "Translation",
+      "failed": "Live translation stopped: {reason}",
+      "unsupported": "This browser can't capture that audio source. Try the latest Chrome or Edge.",
+      "mute": "Mute",
+      "unmute": "Unmute",
+      "start": "Start",
+      "stop": "Stop",
+      "status": {
+        "idle": "Ready",
+        "connecting": "Connecting…",
+        "live": "Live: listening and translating",
+        "stopping": "Finishing…",
+        "error": "Stopped"
+      }
     }
   }
 }
