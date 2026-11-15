@@ -43,6 +43,12 @@ function priceIds(): Partial<Record<BillingInterval, string>> {
   return { ...(month ? { month } : {}), ...(year ? { year } : {}) };
 }
 
+/** STRIPE_AUTOMATIC_TAX=1: Stripe Tax adds sales tax/VAT at Checkout. Opt-in,
+ *  because Stripe refuses the session if Stripe Tax isn't set up on the account. */
+export function automaticTaxEnabled(): boolean {
+  return ['1', 'true', 'on', 'yes'].includes(process.env.STRIPE_AUTOMATIC_TAX?.trim().toLowerCase() ?? '');
+}
+
 export function billingEnabled(): boolean {
   return publicChatEnabled()
     && !!process.env.STRIPE_SECRET_KEY?.trim()
@@ -135,6 +141,9 @@ export async function createCheckout(member: Member, interval: BillingInterval, 
     line_items: [{ price, quantity: 1 }],
     subscription_data: { metadata: { elp_member_id: String(member.id) } },
     allow_promotion_codes: true,
+    // The customer exists before Checkout, so the billing address Checkout
+    // collects for the tax calculation has to be saved back onto it.
+    ...(automaticTaxEnabled() ? { automatic_tax: { enabled: true }, customer_update: { address: 'auto' as const } } : {}),
     success_url: `${base}/chat?billing=success`,
     cancel_url: `${base}/chat?billing=cancel`,
   });

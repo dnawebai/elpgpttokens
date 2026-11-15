@@ -103,7 +103,7 @@ async function checkedOutMember(email = 'ana@example.com') {
   return { token, id: row.id, customer: row.stripe_customer_id! };
 }
 
-const BILLING_ENV = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_MONTHLY', 'STRIPE_PRICE_YEARLY', 'ELPGPT_PUBLIC_URL'];
+const BILLING_ENV = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_MONTHLY', 'STRIPE_PRICE_YEARLY', 'ELPGPT_PUBLIC_URL', 'STRIPE_AUTOMATIC_TAX'];
 
 beforeEach(() => {
   process.env.ENCRYPTION_KEY = '0'.repeat(64);
@@ -192,9 +192,21 @@ describe('billing (configured)', () => {
     expect(session.get('success_url')).toBe('https://elpgpt.com/chat?billing=success');
     expect(session.get('cancel_url')).toBe('https://elpgpt.com/chat?billing=cancel');
 
+    expect(session.get('automatic_tax[enabled]')).toBeNull(); // opt-in
+
     calls.length = 0;
     await call('POST', '/api/public/billing/checkout', { body: { interval: 'month' }, headers: member(token) });
     expect(calls.map(c => c.path)).toEqual(['/v1/checkout/sessions']);
+  });
+
+  it('asks Stripe Tax to add tax when STRIPE_AUTOMATIC_TAX is on', async () => {
+    const calls = mockStripe();
+    process.env.STRIPE_AUTOMATIC_TAX = '1';
+    const token = await signup();
+    await call('POST', '/api/public/billing/checkout', { body: { interval: 'month' }, headers: member(token) });
+    const session = calls.find(c => c.path === '/v1/checkout/sessions')!.form;
+    expect(session.get('automatic_tax[enabled]')).toBe('true');
+    expect(session.get('customer_update[address]')).toBe('auto');
   });
 
   it('rejects a webhook with a bad signature and changes nothing', async () => {

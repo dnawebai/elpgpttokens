@@ -182,7 +182,11 @@ for good, the member drops back to Free.
 
 1. In the Stripe dashboard, create a product (for example "ELPGPT Subscriber")
    with a monthly and/or a yearly **recurring** price. Copy the price IDs
-   (`price_…`).
+   (`price_…`). If you use Stripe Tax, give the product a digital-service tax
+   category, such as "Artificial Intelligence as a Service (AIaaS) - Cloud
+   Based - Personal Use" or "Software as a Service (SaaS) - Personal Use", not
+   a physical-goods one, and set `STRIPE_AUTOMATIC_TAX=1` so Checkout adds the
+   tax.
 2. Add a webhook endpoint: `https://<your-host>/api/public/billing/webhook`,
    with the events `checkout.session.completed`,
    `customer.subscription.created`, `customer.subscription.updated`,
@@ -198,6 +202,7 @@ for good, the member drops back to Free.
    STRIPE_PRICE_MONTHLY=price_...   # either or both
    STRIPE_PRICE_YEARLY=price_...
    ELPGPT_PUBLIC_URL=https://elpgpt.com   # where Checkout sends people back
+   STRIPE_AUTOMATIC_TAX=1                 # only with Stripe Tax set up
    ```
 
 Billing turns on only when the public chat is on and the key, the webhook
