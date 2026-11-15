@@ -89,7 +89,8 @@ elpRouter.post('/realtime/translate', async (req: Request, res: Response) => {
 });
 
 // ── Public chat members (operator view) ────────────────────────────────────
-// Billing is not wired yet, so the operator grants the subscriber plan here.
+// Stripe keeps paid plans in sync; the operator can also set a plan by hand
+// here (a manual grant that billing never revokes).
 elpRouter.get('/members', (_req: Request, res: Response) => {
   res.json({
     publicChatEnabled: publicChatEnabled(),

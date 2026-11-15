@@ -1432,6 +1432,31 @@
         "password": "Senha",
         "passwordHint": "Pelo menos 8 caracteres",
         "signupClosed": "Novos cadastros estão fechados no momento."
+      },
+      "upgrade": "Assinar",
+      "manageSubscription": "Gerenciar assinatura",
+      "billing": {
+        "title": "Torne-se Assinante",
+        "description": "Uma única assinatura para todos os modelos premium.",
+        "perkModels": "Claude, ChatGPT, pesquisa com Perplexity e criação de imagens, escolhidos automaticamente",
+        "perkMessages": "{limit} mensagens por dia",
+        "perkVoice": "Respostas por voz e o intérprete ao vivo",
+        "period": "Período de cobrança",
+        "monthly": "Mensal",
+        "yearly": "Anual",
+        "perMonth": "{price} / mês",
+        "perYear": "{price} / ano",
+        "continue": "Continuar para o pagamento seguro",
+        "secureNote": "O pagamento é processado pela Stripe. Cancele quando quiser em Gerenciar assinatura.",
+        "signInFirst": "Crie uma conta grátis ou entre primeiro, depois assine.",
+        "success": "Pagamento recebido. Ativando sua assinatura…",
+        "activating": "Ativando assinatura…",
+        "activated": "Agora você é Assinante. Os modelos premium estão ativos.",
+        "pending": "Seu pagamento foi concluído. A ativação pode levar um minuto; recarregue a página em instantes.",
+        "cancelled": "Pagamento cancelado. Nada foi cobrado.",
+        "failed": "Não foi possível abrir a página de pagamento: {error}",
+        "renews": "O período atual termina em {date}",
+        "pastDue": "O pagamento falhou: atualize seu cartão"
       }
     },
     "members": {
@@ -1448,7 +1473,11 @@
       "active": "Ativo",
       "disabled": "Desativado",
       "disable": "Desativar",
-      "enable": "Ativar"
+      "enable": "Ativar",
+      "billing": "Cobrança",
+      "viaStripe": "Stripe: {status}",
+      "manual": "definido por você",
+      "billingNote": "As assinaturas da Stripe atualizam os planos sozinhas e nunca substituem um plano definido aqui."
     }
   }
 }

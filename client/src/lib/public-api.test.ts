@@ -2,7 +2,10 @@
 //
 // Member tokens live in localStorage, so these tests need a DOM storage.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getMemberToken, setMemberToken, publicHeaders, publicFetch, PublicApiError, quotaSummary } from './public-api'
+import {
+  getMemberToken, setMemberToken, publicHeaders, publicFetch, PublicApiError, quotaSummary,
+  formatPrice, readBillingReturn, startCheckout, openBillingPortal,
+} from './public-api'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -47,5 +50,31 @@ describe('quotaSummary', () => {
     expect(quotaSummary({ enabled: true, quota: { limit: 0, used: 0, remaining: 0 } })).toEqual({ remaining: 0, limit: 0, low: false })
     expect(quotaSummary({ enabled: false })).toBeNull()
     expect(quotaSummary(undefined)).toBeNull()
+  })
+})
+
+describe('billing helpers', () => {
+  it('formats Stripe amounts by the currency\'s own decimals', () => {
+    expect(formatPrice({ interval: 'month', amount: 1500, currency: 'usd' }, 'en-US')).toBe('$15.00')
+    expect(formatPrice({ interval: 'month', amount: 1500, currency: 'jpy' }, 'en-US')).toBe('¥1,500')
+    expect(formatPrice({ interval: 'year', amount: null, currency: 'usd' }, 'en-US')).toBeNull()
+    expect(formatPrice({ interval: 'year', amount: 100, currency: 'not-a-currency' }, 'en-US')).toBeNull()
+  })
+
+  it('reads the Checkout return flag', () => {
+    expect(readBillingReturn('?billing=success')).toBe('success')
+    expect(readBillingReturn('?x=1&billing=cancel')).toBe('cancel')
+    expect(readBillingReturn('?billing=pwned')).toBeNull()
+    expect(readBillingReturn('')).toBeNull()
+  })
+
+  it('posts the interval and only follows https payment pages', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ url: 'https://checkout.stripe.com/c/pay/cs_1' }), { status: 200 }))
+    await expect(startCheckout('year')).resolves.toBe('https://checkout.stripe.com/c/pay/cs_1')
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ interval: 'year' })
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ url: 'javascript:alert(1)' }), { status: 200 }))
+    await expect(openBillingPortal()).rejects.toBeInstanceOf(PublicApiError)
   })
 })

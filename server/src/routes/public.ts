@@ -12,6 +12,9 @@ import {
   visitorSubject, memberSubject, quotaState, consumeMessage, MemberError,
   type AccessTier, type Member,
 } from '../services/members.js';
+import {
+  billingEnabled, billingPrices, createCheckout, createPortal, handleStripeWebhook, BillingError,
+} from '../services/billing.js';
 
 /**
  * Public elpgpt.com/chat API (no dashboard session). Off unless
@@ -68,14 +71,25 @@ publicRouter.get('/status', (req: Request, res: Response) => {
     return;
   }
   const caller = callerOf(req);
+  const member = caller.member;
   res.json({
     enabled: true,
     signupEnabled: publicSignupEnabled(),
     tier: caller.tier,
-    member: caller.member ? { email: caller.member.email, plan: caller.member.plan } : null,
+    member: member ? {
+      email: member.email,
+      plan: member.plan,
+      subscription: member.subscriptionStatus ? {
+        status: member.subscriptionStatus,
+        periodEnd: member.subscriptionPeriodEnd,
+        source: member.planSource,
+      } : null,
+      canManageBilling: !!member.stripeCustomerId,
+    } : null,
     quota: quotaState(caller.subject, caller.tier),
     limits: { visitor: dailyLimit('visitor'), free: dailyLimit('free'), subscriber: dailyLimit('subscriber') },
     features: features(caller.tier),
+    billing: { enabled: billingEnabled() },
   });
 });
 
@@ -240,3 +254,75 @@ publicRouter.post('/realtime/translate', async (req: Request, res: Response) => 
       err instanceof Error ? err.message : 'Live translation failed');
   }
 });
+
+// ── Billing (Stripe) ──────────────────────────────────────────────────────
+// Checkout and the customer portal are Stripe-hosted pages: these routes only
+// mint a session and return its URL. The plan itself changes when Stripe's
+// webhook arrives (stripeWebhookHandler below), never on the browser's word.
+
+function requestOrigin(req: Request): string {
+  return `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+}
+
+function billingFail(res: Response, err: unknown) {
+  if (err instanceof BillingError) return fail(res, err.status, err.code, err.message);
+  console.error('[billing] Stripe request failed:', err instanceof Error ? err.message : err);
+  fail(res, 502, 'stripe_error', 'The payment provider could not be reached. Please try again.');
+}
+
+function requireMember(req: Request, res: Response): Member | null {
+  const { member } = callerOf(req);
+  if (!member) {
+    fail(res, 401, 'sign_in_required', 'Sign in to subscribe.');
+    return null;
+  }
+  return member;
+}
+
+publicRouter.get('/billing/prices', async (_req: Request, res: Response) => {
+  if (!billingEnabled()) return fail(res, 404, 'billing_disabled', 'Subscriptions are not available on this server.');
+  res.json({ prices: await billingPrices() });
+});
+
+const checkoutSchema = z.object({ interval: z.enum(['month', 'year']) });
+
+publicRouter.post('/billing/checkout', async (req: Request, res: Response) => {
+  const parsed = checkoutSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, 'invalid_request', 'interval must be "month" or "year".');
+  const member = requireMember(req, res);
+  if (!member) return;
+  try {
+    res.json({ url: await createCheckout(member, parsed.data.interval, requestOrigin(req)) });
+  } catch (err) {
+    billingFail(res, err);
+  }
+});
+
+publicRouter.post('/billing/portal', async (req: Request, res: Response) => {
+  const member = requireMember(req, res);
+  if (!member) return;
+  try {
+    res.json({ url: await createPortal(member, requestOrigin(req)) });
+  } catch (err) {
+    billingFail(res, err);
+  }
+});
+
+/**
+ * POST /api/public/billing/webhook. Mounted in app.ts with a raw body parser
+ * ahead of the JSON parsers (the signature covers the exact bytes Stripe
+ * sent) and ahead of the admin rate limiter (Stripe delivers from shared
+ * addresses; the signature is the authentication). A processing error answers
+ * 500 so Stripe redelivers; handling is idempotent.
+ */
+export async function stripeWebhookHandler(req: Request, res: Response): Promise<void> {
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  try {
+    const result = await handleStripeWebhook(raw, req.get('stripe-signature'));
+    res.json({ received: true, handled: result.handled });
+  } catch (err) {
+    if (err instanceof BillingError) return fail(res, err.status, err.code, err.message);
+    console.error('[billing] webhook processing failed:', err instanceof Error ? err.message : err);
+    fail(res, 500, 'webhook_failed', 'Webhook processing failed');
+  }
+}

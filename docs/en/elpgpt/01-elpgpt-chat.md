@@ -147,9 +147,10 @@ Every tier gets the same auto-routing; free tiers just route onto the free pool.
 Guests can sign up from the chat (`ELPGPT_PUBLIC_SIGNUP=0` closes sign-ups), and
 `ELPGPT_VISITOR_DAILY_LIMIT=0` requires an account to chat at all.
 
-**Subscriptions:** billing is not wired yet. The operator grants or removes the
-Subscriber plan, or disables an account, from **Chat → Members** in the
-dashboard.
+**Subscriptions:** members pay through Stripe (see
+[Subscriptions with Stripe](#subscriptions-with-stripe)). The operator can also
+grant or remove the Subscriber plan by hand, or disable an account, from
+**Chat → Members** in the dashboard.
 
 **How it stays safe:**
 
@@ -168,10 +169,63 @@ dashboard.
 - Sign-up and sign-in are throttled per IP, and disabling a member signs them
   out everywhere.
 
+## Subscriptions with Stripe
+
+A free member clicks **Upgrade**, picks monthly or yearly, and pays on Stripe's
+hosted Checkout page; card details never touch this server. Stripe then calls
+the webhook and the member becomes a Subscriber, usually within seconds (the
+chat waits for it and says so). **Manage subscription** opens Stripe's customer
+portal to change the card or cancel. When a subscription ends or payment fails
+for good, the member drops back to Free.
+
+### Setup
+
+1. In the Stripe dashboard, create a product (for example "ELPGPT Subscriber")
+   with a monthly and/or a yearly **recurring** price. Copy the price IDs
+   (`price_…`).
+2. Add a webhook endpoint: `https://<your-host>/api/public/billing/webhook`,
+   with the events `checkout.session.completed`,
+   `customer.subscription.created`, `customer.subscription.updated`,
+   `customer.subscription.deleted`, `customer.subscription.paused` and
+   `customer.subscription.resumed`. Copy its signing secret (`whsec_…`).
+3. Turn on the customer portal (Settings → Billing → Customer portal) and allow
+   cancellation and payment method updates.
+4. Set the environment and restart:
+
+   ```bash
+   STRIPE_SECRET_KEY=sk_live_...
+   STRIPE_WEBHOOK_SECRET=whsec_...
+   STRIPE_PRICE_MONTHLY=price_...   # either or both
+   STRIPE_PRICE_YEARLY=price_...
+   ELPGPT_PUBLIC_URL=https://elpgpt.com   # where Checkout sends people back
+   ```
+
+Billing turns on only when the public chat is on and the key, the webhook
+secret and at least one price are set. The Upgrade dialog shows the amounts
+from Stripe, so changing a price is done in Stripe, not here. Use test-mode keys
+(`sk_test_…`) and the Stripe CLI (`stripe listen --forward-to
+localhost:3001/api/public/billing/webhook`) to try it locally.
+
+### How it stays correct
+
+- The plan changes only when a **signed** webhook arrives, never because the
+  browser came back from Checkout. The webhook is checked against the exact
+  bytes Stripe signed (it is mounted before the JSON parsers).
+- Stripe doesn't guarantee event order, so every event re-reads the
+  subscription from Stripe instead of trusting the payload. Replays and
+  duplicates are harmless.
+- The Stripe customer is created before Checkout, so every event maps back to a
+  member.
+- `active`, `trialing` and `past_due` (while Stripe retries the card) keep the
+  Subscriber plan; anything else returns the member to Free.
+- Only subscriptions to the configured prices count, so other products on the
+  same Stripe account are ignored.
+- A plan the operator set by hand in **Chat → Members** is never changed by
+  billing.
+- A webhook that fails to process answers 500, so Stripe delivers it again.
+
 ## Not in this release
 
-- **Billing.** Stripe (or another provider) checkout and webhooks to grant the
-  Subscriber plan automatically.
 - **Two-way conversations.** The live interpreter translates one direction at a
   time, into the chosen language. A two-person call needs one session per
   direction with separate audio tracks, as OpenAI recommends.

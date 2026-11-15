@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Brain, Code, Download, ExternalLink, Eye, Image as ImageIcon, KeyRound, Languages, MessageCircle,
-  AudioLines, LogOut, Paperclip, PenLine, UserRound, Users, Plus, RotateCcw, Search, Send, Sparkles, Square, Volume2, VolumeX, X,
+  AudioLines, CreditCard, Crown, LogOut, Paperclip, PenLine, UserRound, Users, Plus, RotateCcw, Search, Send, Sparkles, Square, Volume2, VolumeX, X,
 } from 'lucide-react'
 import type { ElpRouteInfo } from '@freellmapi/shared/types'
 import { apiFetch } from '@/lib/api'
@@ -17,8 +17,10 @@ import { DictationButton } from '@/components/playground/dictation-button'
 import { LiveInterpreter } from '@/components/elp/live-interpreter'
 import { AccountDialog } from '@/components/elp/account-dialog'
 import { MembersDialog } from '@/components/elp/members-dialog'
+import { UpgradeDialog } from '@/components/elp/upgrade-dialog'
+import { useBillingReturn } from '@/hooks/use-billing-return'
 import {
-  getMemberToken, setMemberToken, publicFetch, publicHeaders, publicUrl, quotaSummary, type PublicStatus,
+  getMemberToken, setMemberToken, publicFetch, publicHeaders, publicUrl, quotaSummary, openBillingPortal, type PublicStatus,
 } from '@/lib/public-api'
 import { appendDictation, hasTranscription, type TranscriptionModelRow } from '@/lib/transcription'
 import { readImageAttachment, IMAGE_MIME_TYPES, MAX_ATTACHMENTS } from '@/lib/attachments'
@@ -161,7 +163,7 @@ function AssistantTurn({ turn, onRetry, onSpeak }: { turn: ChatTurn; onRetry: ()
  * their member token; the server enforces plan and daily quota.
  */
 export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public' }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const isPublic = mode === 'public'
   const [memberToken, setMemberTokenState] = useState<string | null>(() => getMemberToken())
   const { data: keyData } = useQuery<{ apiKey: string }>({ queryKey: ['unified-key'], queryFn: () => apiFetch('/api/settings/api-key'), enabled: !isPublic })
@@ -180,7 +182,20 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
   const liveAvailable = isPublic ? !!pub?.features?.liveTranslate : (status?.liveTranslate?.available ?? false)
   const [accountOpen, setAccountOpen] = useState(false)
   const [membersOpen, setMembersOpen] = useState(false)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   const quota = quotaSummary(pub)
+  const { activating } = useBillingReturn(isPublic, pub, refetchPub)
+  const billingOn = isPublic && !!pub?.billing?.enabled
+  const subscription = pub?.member?.subscription
+  const canUpgrade = billingOn && pub?.tier !== 'subscriber' && !activating
+  const canManage = billingOn && !!pub?.member?.canManageBilling && !!subscription
+  const manageBilling = async () => {
+    try {
+      window.location.assign(await openBillingPortal())
+    } catch (err) {
+      toast.error(t('chat.public.billing.failed', { error: err instanceof Error ? err.message : String(err) }))
+    }
+  }
 
   const onAuthed = (token: string) => {
     setMemberToken(token)
@@ -329,7 +344,10 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
       if (!res.ok || !res.body) {
         const body = await res.json().catch(() => null)
         // Out of messages or sign-in required: offer an account right away.
-        if (isPublic && ['daily_limit_reached', 'sign_in_required'].includes(body?.error?.code) && !pub?.member) setAccountOpen(true)
+        if (isPublic && ['daily_limit_reached', 'sign_in_required'].includes(body?.error?.code)) {
+          if (!pub?.member) setAccountOpen(true)
+          else if (body?.error?.code === 'daily_limit_reached' && pub.tier === 'free' && pub.billing?.enabled) setUpgradeOpen(true)
+        }
         throw new Error(body?.error?.message ?? `HTTP ${res.status}`)
       }
       updateTurn(assistantId, { route: route ?? null, routedVia })
@@ -354,7 +372,7 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
       setBusy(false)
       abortRef.current = null
     }
-  }, [turns, input, attachments, busy, ready, isPublic, apiKey, model, preview, translateOn, targetLang, speakOn, speak, updateTurn, refetchPub, pub?.member])
+  }, [turns, input, attachments, busy, ready, isPublic, apiKey, model, preview, translateOn, targetLang, speakOn, speak, updateTurn, refetchPub, pub?.member, pub?.tier, pub?.billing?.enabled])
 
   const retry = (assistantId: string) => {
     const idx = turns.findIndex(turn => turn.id === assistantId)
@@ -408,6 +426,25 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
             <span className={cn('text-xs', quota.low ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
               {t('chat.public.remaining', { remaining: quota.remaining, limit: quota.limit })}
             </span>
+          )}
+          {isPublic && subscription?.status === 'past_due' && canManage && (
+            <button type="button" onClick={() => void manageBilling()} className="text-xs text-amber-700 underline dark:text-amber-300">
+              {t('chat.public.billing.pastDue')}
+            </button>
+          )}
+          {activating && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="size-1.5 animate-pulse rounded-full bg-primary" /> {t('chat.public.billing.activating')}
+            </span>
+          )}
+          {canUpgrade && (
+            <Button size="sm" onClick={() => setUpgradeOpen(true)}><Crown /> {t('chat.public.upgrade')}</Button>
+          )}
+          {canManage && (
+            <Button size="sm" variant="ghost" onClick={() => void manageBilling()}
+              title={subscription?.periodEnd ? t('chat.public.billing.renews', { date: new Date(subscription.periodEnd * 1000).toLocaleDateString(locale) }) : undefined}>
+              <CreditCard /> {t('chat.public.manageSubscription')}
+            </Button>
           )}
           {isPublic && (pub?.member ? (
             <Button size="sm" variant="ghost" onClick={() => void signOut()} title={pub.member.email}><LogOut /> {t('chat.public.signOut')}</Button>
@@ -467,9 +504,13 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
                 {t('chat.freeFallback')} <Link to="/keys" className="underline">{t('chat.addKey')}</Link>
               </span>
             )}
-            {preview?.fallback && isPublic && !pub?.features?.premium && (
+            {preview?.fallback && isPublic && !pub?.features?.premium && (canUpgrade ? (
+              <button type="button" onClick={() => setUpgradeOpen(true)} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                {t('chat.public.upgradeHint')}
+              </button>
+            ) : (
               <span className="text-xs text-muted-foreground">{t('chat.public.upgradeHint')}</span>
-            )}
+            ))}
           </div>
 
           {attachments.length > 0 && (
@@ -559,6 +600,10 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
         } : {})}
       />
       {isPublic && <AccountDialog open={accountOpen} onOpenChange={setAccountOpen} status={pub} onAuthed={onAuthed} />}
+      {billingOn && (
+        <UpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} status={pub}
+          onNeedAccount={() => { setUpgradeOpen(false); setAccountOpen(true) }} />
+      )}
       {!isPublic && <MembersDialog open={membersOpen} onOpenChange={setMembersOpen} />}
     </div>
   )

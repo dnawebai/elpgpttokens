@@ -8,14 +8,38 @@ export const MEMBER_TOKEN_KEY = 'elpgpt_member_token'
 
 export type AccessTier = 'visitor' | 'free' | 'subscriber'
 
+export interface PublicSubscription {
+  /** Stripe's subscription status: active, trialing, past_due, canceled… */
+  status: string
+  /** Unix seconds when the current billing period ends. */
+  periodEnd: number | null
+  /** Who granted the current plan: a Stripe subscription or the operator. */
+  source: 'stripe' | 'manual'
+}
+
 export interface PublicStatus {
   enabled: boolean
   signupEnabled?: boolean
   tier?: AccessTier
-  member?: { email: string; plan: 'free' | 'subscriber' } | null
+  member?: {
+    email: string
+    plan: 'free' | 'subscriber'
+    subscription?: PublicSubscription | null
+    canManageBilling?: boolean
+  } | null
   quota?: { limit: number; used: number; remaining: number }
   limits?: Record<AccessTier, number>
   features?: { premium: boolean; voice: boolean; liveTranslate: boolean }
+  billing?: { enabled: boolean }
+}
+
+export type BillingInterval = 'month' | 'year'
+
+export interface BillingPrice {
+  interval: BillingInterval
+  /** In the currency's smallest unit, as Stripe stores it; null if unknown. */
+  amount: number | null
+  currency: string | null
 }
 
 export class PublicApiError extends Error {
@@ -66,4 +90,43 @@ export function quotaSummary(status: PublicStatus | undefined): { remaining: num
   if (!status?.quota) return null
   const { remaining, limit } = status.quota
   return { remaining: Math.max(0, remaining), limit, low: limit > 0 && remaining / limit <= 0.2 }
+}
+
+// ── Billing ────────────────────────────────────────────────────────────────
+
+/**
+ * "$15.00" from Stripe's smallest-unit amount. The divisor comes from the
+ * currency itself, so zero-decimal currencies (JPY, KRW…) are not divided.
+ */
+export function formatPrice(price: BillingPrice, locale: string): string | null {
+  if (price.amount === null || !price.currency) return null
+  try {
+    const format = new Intl.NumberFormat(locale, { style: 'currency', currency: price.currency.toUpperCase() })
+    const digits = format.resolvedOptions().maximumFractionDigits ?? 2
+    return format.format(price.amount / 10 ** digits)
+  } catch {
+    return null
+  }
+}
+
+/** The outcome Stripe Checkout sent the browser back with, if any. */
+export function readBillingReturn(search: string): 'success' | 'cancel' | null {
+  const value = new URLSearchParams(search).get('billing')
+  return value === 'success' || value === 'cancel' ? value : null
+}
+
+/** A Stripe-hosted page URL from the server; anything but https is refused. */
+function hostedPage(url: unknown): string {
+  if (typeof url !== 'string' || !url.startsWith('https://')) throw new PublicApiError('Invalid payment page', 502, 'stripe_error')
+  return url
+}
+
+export async function startCheckout(interval: BillingInterval): Promise<string> {
+  const res = await publicFetch<{ url: string }>('/api/public/billing/checkout', { method: 'POST', body: JSON.stringify({ interval }) })
+  return hostedPage(res.url)
+}
+
+export async function openBillingPortal(): Promise<string> {
+  const res = await publicFetch<{ url: string }>('/api/public/billing/portal', { method: 'POST' })
+  return hostedPage(res.url)
 }

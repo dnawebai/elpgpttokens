@@ -18,7 +18,7 @@ import { embeddingsRouter } from './routes/embeddings.js';
 import { mediaRouter } from './routes/media.js';
 import { searchRouter } from './routes/search.js';
 import { elpRouter } from './routes/elp.js';
-import { publicRouter } from './routes/public.js';
+import { publicRouter, stripeWebhookHandler } from './routes/public.js';
 import { decisionsRouter } from './routes/decisions.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { healthRouter } from './routes/health.js';
@@ -205,6 +205,13 @@ export function createApp(config?: Config) {
   // their sessions off mid-conversation. body-parser skips requests whose
   // body was already parsed, so the second parser only sees what the first
   // didn't own; an over-limit body throws from whichever parser matched.
+  // Stripe webhooks (elpgpt.com/chat subscriptions) are verified against the
+  // exact bytes Stripe signed, so this route takes the raw body and must sit
+  // above the JSON parsers. It also sits above the admin /api limiter: Stripe
+  // delivers from shared addresses, and the signature is the authentication.
+  app.post('/api/public/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
+    void stripeWebhookHandler(req, res);
+  });
   app.use(
     ['/v1', '/v1beta', '/mcp', '/api/chat', '/api/generate', '/api/embed', '/api/embeddings'],
     express.json({ limit: cfg.requestBodyLimitBytes }),

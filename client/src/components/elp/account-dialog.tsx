@@ -7,8 +7,9 @@ import { Dialog, DialogClose, DialogDescription, DialogPopup, DialogTitle } from
 import { publicFetch, PublicApiError, type PublicStatus } from '@/lib/public-api'
 
 // Sign in / create account for the public elpgpt.com/chat. A member account is
-// not a dashboard account: it only raises the daily message limit (and, once
-// the operator grants the subscriber plan, unlocks premium models).
+// not a dashboard account: it raises the daily message limit, and the
+// Subscriber plan (paid through Stripe, or granted by the operator) unlocks
+// premium models.
 
 interface AccountDialogProps {
   open: boolean

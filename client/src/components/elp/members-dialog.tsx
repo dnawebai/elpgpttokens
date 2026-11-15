@@ -5,14 +5,17 @@ import { apiFetch } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogDescription, DialogPopup, DialogTitle } from '@/components/ui/dialog'
 
-// Operator view of public chat members. Billing is not wired yet, so this is
-// where a member is moved to the subscriber plan (premium models, voice and
-// the live interpreter) or disabled.
+// Operator view of public chat members. Plans paid through Stripe update on
+// their own; the operator can also grant or remove the subscriber plan
+// (premium models, voice and the live interpreter) by hand, and billing never
+// overrides a plan set here. Members can be disabled too.
 
 interface MemberRow {
   id: number
   email: string
   plan: 'free' | 'subscriber'
+  planSource: 'manual' | 'stripe'
+  subscriptionStatus: string | null
   disabled: boolean
   createdAt: string
   today: { limit: number; used: number; remaining: number }
@@ -52,7 +55,7 @@ export function MembersDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             {t('chat.members.disabledNotice')}
           </p>
         )}
-        {data && <p className="text-xs text-muted-foreground">{t('chat.members.limits', data.limits)}</p>}
+        {data && <p className="text-xs text-muted-foreground">{t('chat.members.limits', data.limits)} · {t('chat.members.billingNote')}</p>}
 
         {data && data.members.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('chat.members.empty')}</p>
@@ -63,6 +66,7 @@ export function MembersDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                 <tr>
                   <th className="py-1 pr-3 font-medium">{t('chat.members.email')}</th>
                   <th className="py-1 pr-3 font-medium">{t('chat.members.plan')}</th>
+                  <th className="py-1 pr-3 font-medium">{t('chat.members.billing')}</th>
                   <th className="py-1 pr-3 font-medium">{t('chat.members.today')}</th>
                   <th className="py-1 font-medium">{t('chat.members.status')}</th>
                 </tr>
@@ -78,6 +82,10 @@ export function MembersDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                         <option value="free">{t('chat.public.free')}</option>
                         <option value="subscriber">{t('chat.public.subscriber')}</option>
                       </select>
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-muted-foreground">
+                      {m.subscriptionStatus ? t('chat.members.viaStripe', { status: m.subscriptionStatus }) : '—'}
+                      {m.plan === 'subscriber' && m.planSource === 'manual' && <span className="ms-1">({t('chat.members.manual')})</span>}
                     </td>
                     <td className="py-2 pr-3 tabular-nums text-muted-foreground">{m.today.used} / {m.today.limit}</td>
                     <td className="py-2">

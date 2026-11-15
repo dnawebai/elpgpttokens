@@ -1432,6 +1432,31 @@
         "password": "Contraseña",
         "passwordHint": "Al menos 8 caracteres",
         "signupClosed": "Los registros nuevos están cerrados por ahora."
+      },
+      "upgrade": "Mejorar plan",
+      "manageSubscription": "Gestionar suscripción",
+      "billing": {
+        "title": "Hazte Suscriptor",
+        "description": "Una sola suscripción para todos los modelos premium.",
+        "perkModels": "Claude, ChatGPT, búsqueda con Perplexity y creación de imágenes, elegidos automáticamente",
+        "perkMessages": "{limit} mensajes al día",
+        "perkVoice": "Respuestas por voz y el intérprete en vivo",
+        "period": "Periodo de facturación",
+        "monthly": "Mensual",
+        "yearly": "Anual",
+        "perMonth": "{price} / mes",
+        "perYear": "{price} / año",
+        "continue": "Continuar al pago seguro",
+        "secureNote": "El pago lo gestiona Stripe. Cancela cuando quieras desde Gestionar suscripción.",
+        "signInFirst": "Crea una cuenta gratis o inicia sesión primero, y luego mejora tu plan.",
+        "success": "Pago recibido. Activando tu suscripción…",
+        "activating": "Activando suscripción…",
+        "activated": "Ya eres Suscriptor. Los modelos premium están activos.",
+        "pending": "Tu pago se realizó. La activación puede tardar un minuto; recarga la página en un momento.",
+        "cancelled": "Pago cancelado. No se te cobró nada.",
+        "failed": "No se pudo abrir la página de pago: {error}",
+        "renews": "El periodo actual termina el {date}",
+        "pastDue": "El pago falló: actualiza tu tarjeta"
       }
     },
     "members": {
@@ -1448,7 +1473,11 @@
       "active": "Activo",
       "disabled": "Desactivado",
       "disable": "Desactivar",
-      "enable": "Activar"
+      "enable": "Activar",
+      "billing": "Facturación",
+      "viaStripe": "Stripe: {status}",
+      "manual": "asignado por ti",
+      "billingNote": "Las suscripciones de Stripe actualizan los planes solas y nunca anulan un plan que asignes aquí."
     }
   }
 }

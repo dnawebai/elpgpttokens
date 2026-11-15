@@ -1432,6 +1432,31 @@
         "password": "Palavra-passe",
         "passwordHint": "Pelo menos 8 caracteres",
         "signupClosed": "Os novos registos estão fechados de momento."
+      },
+      "upgrade": "Subscrever",
+      "manageSubscription": "Gerir subscrição",
+      "billing": {
+        "title": "Torne-se Subscritor",
+        "description": "Uma única subscrição para todos os modelos premium.",
+        "perkModels": "Claude, ChatGPT, pesquisa com Perplexity e criação de imagens, escolhidos automaticamente",
+        "perkMessages": "{limit} mensagens por dia",
+        "perkVoice": "Respostas por voz e o intérprete ao vivo",
+        "period": "Período de faturação",
+        "monthly": "Mensal",
+        "yearly": "Anual",
+        "perMonth": "{price} / mês",
+        "perYear": "{price} / ano",
+        "continue": "Continuar para o pagamento seguro",
+        "secureNote": "O pagamento é processado pela Stripe. Cancele quando quiser em Gerir subscrição.",
+        "signInFirst": "Crie uma conta gratuita ou inicie sessão primeiro e depois subscreva.",
+        "success": "Pagamento recebido. A ativar a sua subscrição…",
+        "activating": "A ativar subscrição…",
+        "activated": "Agora é Subscritor. Os modelos premium estão ativos.",
+        "pending": "O seu pagamento foi concluído. A ativação pode demorar um minuto; atualize a página daqui a pouco.",
+        "cancelled": "Pagamento cancelado. Não foi cobrado nada.",
+        "failed": "Não foi possível abrir a página de pagamento: {error}",
+        "renews": "O período atual termina em {date}",
+        "pastDue": "O pagamento falhou: atualize o seu cartão"
       }
     },
     "members": {
@@ -1448,7 +1473,11 @@
       "active": "Ativo",
       "disabled": "Desativado",
       "disable": "Desativar",
-      "enable": "Ativar"
+      "enable": "Ativar",
+      "billing": "Faturação",
+      "viaStripe": "Stripe: {status}",
+      "manual": "definido por si",
+      "billingNote": "As subscrições da Stripe atualizam os planos automaticamente e nunca substituem um plano definido aqui."
     }
   }
 }

@@ -1432,6 +1432,31 @@
         "password": "Password",
         "passwordHint": "At least 8 characters",
         "signupClosed": "New sign-ups are closed right now."
+      },
+      "upgrade": "Upgrade",
+      "manageSubscription": "Manage subscription",
+      "billing": {
+        "title": "Upgrade to Subscriber",
+        "description": "One subscription for every premium model.",
+        "perkModels": "Claude, ChatGPT, Perplexity search and image creation, picked automatically",
+        "perkMessages": "{limit} messages a day",
+        "perkVoice": "Voice replies and the live interpreter",
+        "period": "Billing period",
+        "monthly": "Monthly",
+        "yearly": "Yearly",
+        "perMonth": "{price} / month",
+        "perYear": "{price} / year",
+        "continue": "Continue to secure checkout",
+        "secureNote": "Payment is handled by Stripe. Cancel any time from Manage subscription.",
+        "signInFirst": "Create a free account or sign in first, then upgrade.",
+        "success": "Payment received. Activating your subscription…",
+        "activating": "Activating subscription…",
+        "activated": "You are a Subscriber now. Premium models are on.",
+        "pending": "Your payment went through. Activation can take a minute; refresh the page shortly.",
+        "cancelled": "Checkout cancelled. Nothing was charged.",
+        "failed": "Could not open the payment page: {error}",
+        "renews": "Current period ends {date}",
+        "pastDue": "Payment failed: update your card"
       }
     },
     "members": {
@@ -1448,7 +1473,11 @@
       "active": "Active",
       "disabled": "Disabled",
       "disable": "Disable",
-      "enable": "Enable"
+      "enable": "Enable",
+      "billing": "Billing",
+      "viaStripe": "Stripe: {status}",
+      "manual": "set by you",
+      "billingNote": "Stripe subscriptions update plans automatically and never override a plan you set here."
     }
   }
 }

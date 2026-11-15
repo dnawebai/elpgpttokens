@@ -11,8 +11,9 @@
  * The whole surface is OFF unless ELPGPT_PUBLIC_CHAT is set: exposing an
  * install to anonymous visitors spends the operator's quota, so it must be a
  * deliberate choice. Members are not dashboard users and have their own tables
- * and sessions; a member token can never open /api/*. Billing is not wired
- * yet: the operator marks a member as a subscriber from the dashboard.
+ * and sessions; a member token can never open /api/*. The Subscriber plan
+ * comes from a Stripe subscription (services/billing.ts) or from the operator
+ * in the dashboard; billing never overrides the operator's choice.
  */
 import crypto from 'node:crypto';
 import { getDb, getUnifiedApiKey } from '../db/index.js';
@@ -26,8 +27,14 @@ export interface Member {
   id: number;
   email: string;
   plan: MemberPlan;
+  /** Who granted the plan: the operator ('manual') or a Stripe subscription. */
+  planSource: 'manual' | 'stripe';
   disabled: boolean;
   createdAt: string;
+  stripeCustomerId: string | null;
+  subscriptionStatus: string | null;
+  /** Unix seconds when the current billing period ends, if subscribed. */
+  subscriptionPeriodEnd: number | null;
 }
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -74,11 +81,33 @@ function sha256(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
-function toMember(row: { id: number; email: string; plan: string; disabled: number; created_at: string }): Member {
-  return { id: row.id, email: row.email, plan: row.plan === 'subscriber' ? 'subscriber' : 'free', disabled: row.disabled === 1, createdAt: row.created_at };
+interface MemberRow {
+  id: number;
+  email: string;
+  plan: string;
+  plan_source: string;
+  disabled: number;
+  created_at: string;
+  stripe_customer_id: string | null;
+  subscription_status: string | null;
+  subscription_period_end: number | null;
 }
 
-const MEMBER_COLUMNS = 'id, email, plan, disabled, created_at';
+function toMember(row: MemberRow): Member {
+  return {
+    id: row.id,
+    email: row.email,
+    plan: row.plan === 'subscriber' ? 'subscriber' : 'free',
+    planSource: row.plan_source === 'stripe' ? 'stripe' : 'manual',
+    disabled: row.disabled === 1,
+    createdAt: row.created_at,
+    stripeCustomerId: row.stripe_customer_id,
+    subscriptionStatus: row.subscription_status,
+    subscriptionPeriodEnd: row.subscription_period_end,
+  };
+}
+
+const MEMBER_COLUMNS = 'id, email, plan, plan_source, disabled, created_at, stripe_customer_id, subscription_status, subscription_period_end';
 
 export function createMember(email: string, password: string): Member {
   const normalized = normalizeEmail(email);
@@ -94,23 +123,24 @@ export function createMember(email: string, password: string): Member {
 
 export function verifyMember(email: string, password: string): Member | null {
   const row = getDb().prepare(`SELECT ${MEMBER_COLUMNS}, password_hash FROM elp_members WHERE email = ?`)
-    .get(normalizeEmail(email)) as (Parameters<typeof toMember>[0] & { password_hash: string }) | undefined;
+    .get(normalizeEmail(email)) as (MemberRow & { password_hash: string }) | undefined;
   if (!row || !verifyPassword(password, row.password_hash)) return null;
   return toMember(row);
 }
 
 export function getMember(id: number): Member | null {
-  const row = getDb().prepare(`SELECT ${MEMBER_COLUMNS} FROM elp_members WHERE id = ?`).get(id) as Parameters<typeof toMember>[0] | undefined;
+  const row = getDb().prepare(`SELECT ${MEMBER_COLUMNS} FROM elp_members WHERE id = ?`).get(id) as MemberRow | undefined;
   return row ? toMember(row) : null;
 }
 
 export function listMembers(): Member[] {
-  return (getDb().prepare(`SELECT ${MEMBER_COLUMNS} FROM elp_members ORDER BY id DESC`).all() as Parameters<typeof toMember>[0][]).map(toMember);
+  return (getDb().prepare(`SELECT ${MEMBER_COLUMNS} FROM elp_members ORDER BY id DESC`).all() as MemberRow[]).map(toMember);
 }
 
 export function updateMember(id: number, patch: { plan?: MemberPlan; disabled?: boolean }): Member | null {
   const db = getDb();
-  if (patch.plan) db.prepare('UPDATE elp_members SET plan = ? WHERE id = ?').run(patch.plan, id);
+  // An operator's choice is a manual grant: billing never revokes it.
+  if (patch.plan) db.prepare("UPDATE elp_members SET plan = ?, plan_source = 'manual' WHERE id = ?").run(patch.plan, id);
   if (patch.disabled !== undefined) {
     db.prepare('UPDATE elp_members SET disabled = ? WHERE id = ?').run(patch.disabled ? 1 : 0, id);
     // A disabled member is signed out everywhere at once.
@@ -190,4 +220,40 @@ export function consumeMessage(subject: string, tier: AccessTier): QuotaState & 
     `).run(subject, day);
     return { allowed: true, limit, used: used + 1, remaining: Math.max(0, limit - used - 1) };
   })();
+}
+
+// ── Billing state (services/billing.ts) ─────────────────────────────────────
+
+export function memberByStripeCustomer(customerId: string): Member | null {
+  const row = getDb().prepare(`SELECT ${MEMBER_COLUMNS} FROM elp_members WHERE stripe_customer_id = ?`).get(customerId) as MemberRow | undefined;
+  return row ? toMember(row) : null;
+}
+
+export function setStripeCustomer(memberId: number, customerId: string): void {
+  getDb().prepare('UPDATE elp_members SET stripe_customer_id = ? WHERE id = ?').run(customerId, memberId);
+}
+
+/**
+ * Record a Stripe subscription's current state and the plan it implies. An
+ * active subscription grants Subscriber (source 'stripe'); a lapsed one only
+ * downgrades a plan Stripe granted, never an operator's manual grant.
+ */
+export function applySubscriptionState(memberId: number, state: {
+  subscriptionId: string;
+  status: string;
+  periodEnd: number | null;
+  grantsAccess: boolean;
+}): Member | null {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare('UPDATE elp_members SET stripe_subscription_id = ?, subscription_status = ?, subscription_period_end = ? WHERE id = ?')
+      .run(state.subscriptionId, state.status, state.periodEnd, memberId);
+    if (state.grantsAccess) {
+      // A manual Subscriber stays manual, so a later cancellation can't revoke it.
+      db.prepare("UPDATE elp_members SET plan = 'subscriber', plan_source = 'stripe' WHERE id = ? AND NOT (plan = 'subscriber' AND plan_source = 'manual')").run(memberId);
+    } else {
+      db.prepare("UPDATE elp_members SET plan = 'free' WHERE id = ? AND plan_source = 'stripe'").run(memberId);
+    }
+  })();
+  return getMember(memberId);
 }
