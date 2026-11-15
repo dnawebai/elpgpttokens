@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mic, MonitorSpeaker, Square, Volume2, VolumeX, X } from 'lucide-react'
+import { ConversationPanel } from '@/components/elp/conversation-interpreter'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -12,7 +13,9 @@ import {
 } from '@/lib/live-translate'
 
 // Live interpreter: speak (or play a tab) in any language and hear it in the
-// target language a moment later, with both transcripts on screen.
+// target language a moment later, with both transcripts on screen. The
+// Conversation tab runs one session per direction for two people
+// (conversation-interpreter.tsx).
 
 interface LiveInterpreterProps {
   open: boolean
@@ -24,13 +27,15 @@ interface LiveInterpreterProps {
   handshake?: StartLiveOptions['handshake']
   /** Message shown when unavailable; defaults to "needs an OpenAI key". */
   unavailableMessage?: string
-  /** Public chat: ask the server for the next block of minutes while live.
-   *  A refusal (allowance used up) stops the interpreter with its reason. */
-  keepAlive?: { everyMs: number; run: () => Promise<unknown> }
+  /** Public chat: ask the server for the next block of minutes while live,
+   *  for one session or both directions of a conversation. A refusal
+   *  (allowance used up) stops the interpreter with its reason. */
+  keepAlive?: { everyMs: number; run: (sessions: 1 | 2) => Promise<unknown> }
 }
 
 export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage = 'en', handshake, unavailableMessage, keepAlive }: LiveInterpreterProps) {
   const { t } = useI18n()
+  const [mode, setMode] = useState<'one-way' | 'conversation'>('one-way')
   const [language, setLanguage] = useState(defaultLanguage)
   const [source, setSource] = useState<LiveSource>('mic')
   const [status, setStatus] = useState<LiveStatus>('idle')
@@ -63,7 +68,7 @@ export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage
   useEffect(() => {
     if (status !== 'live' || !keepAlive) return
     const timer = window.setInterval(() => {
-      keepAlive.run().catch((err: unknown) => {
+      keepAlive.run(1).catch((err: unknown) => {
         window.clearInterval(timer)
         const session = sessionRef.current
         sessionRef.current = null
@@ -129,60 +134,75 @@ export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage
           </p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <label className="inline-flex items-center gap-1.5">
-                <span className="text-muted-foreground">{t('chat.live.translateInto')}</span>
-                <select value={language} disabled={running} onChange={e => setLanguage(e.target.value)} className="rounded-md border bg-background px-2 py-1">
-                  {TRANSLATE_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.native}</option>)}
-                </select>
-              </label>
-              <div role="radiogroup" aria-label={t('chat.live.source')} className="inline-flex rounded-md border p-0.5">
-                {([['mic', Mic, 'chat.live.sourceMic'], ['tab', MonitorSpeaker, 'chat.live.sourceTab']] as const).map(([value, Icon, key]) => (
-                  <button key={value} type="button" role="radio" aria-checked={source === value} disabled={running}
-                    onClick={() => setSource(value)}
-                    className={cn('inline-flex items-center gap-1 rounded px-2 py-1 text-xs', source === value && 'bg-muted font-medium')}>
-                    <Icon className="size-3.5" /> {t(key)}
-                  </button>
-                ))}
-              </div>
+            <div role="tablist" aria-label={t('chat.live.title')} className="inline-flex w-fit rounded-md border p-0.5 text-sm">
+              {(['one-way', 'conversation'] as const).map(value => (
+                <button key={value} type="button" role="tab" aria-selected={mode === value} disabled={running}
+                  onClick={() => setMode(value)}
+                  className={cn('rounded px-3 py-1', mode === value && 'bg-muted font-medium')}>
+                  {value === 'one-way' ? t('chat.live.conv.tabOneWay') : t('chat.live.conv.tabConversation')}
+                </button>
+              ))}
             </div>
+            {mode === 'conversation' ? (
+              <ConversationPanel open={open} defaultLanguage={defaultLanguage} handshake={handshake} keepAlive={keepAlive} />
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <label className="inline-flex items-center gap-1.5">
+                    <span className="text-muted-foreground">{t('chat.live.translateInto')}</span>
+                    <select value={language} disabled={running} onChange={e => setLanguage(e.target.value)} className="rounded-md border bg-background px-2 py-1">
+                      {TRANSLATE_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.native}</option>)}
+                    </select>
+                  </label>
+                  <div role="radiogroup" aria-label={t('chat.live.source')} className="inline-flex rounded-md border p-0.5">
+                    {([['mic', Mic, 'chat.live.sourceMic'], ['tab', MonitorSpeaker, 'chat.live.sourceTab']] as const).map(([value, Icon, key]) => (
+                      <button key={value} type="button" role="radio" aria-checked={source === value} disabled={running}
+                        onClick={() => setSource(value)}
+                        className={cn('inline-flex items-center gap-1 rounded px-2 py-1 text-xs', source === value && 'bg-muted font-medium')}>
+                        <Icon className="size-3.5" /> {t(key)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <section className="flex min-h-40 flex-col rounded-xl border bg-muted/30 p-3">
-                <h3 className="mb-1 text-xs font-medium text-muted-foreground">{t('chat.live.original')}</h3>
-                <p className="flex-1 whitespace-pre-wrap text-sm text-muted-foreground">{transcript.source || (running ? '…' : '')}</p>
-              </section>
-              <section className="flex min-h-40 flex-col rounded-xl border p-3">
-                <h3 className="mb-1 text-xs font-medium text-muted-foreground">{t('chat.live.translation')}</h3>
-                <div ref={translatedRef} className="max-h-60 flex-1 overflow-y-auto whitespace-pre-wrap text-base">{transcript.translated || (running ? '…' : '')}</div>
-              </section>
-            </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <section className="flex min-h-40 flex-col rounded-xl border bg-muted/30 p-3">
+                    <h3 className="mb-1 text-xs font-medium text-muted-foreground">{t('chat.live.original')}</h3>
+                    <p className="flex-1 whitespace-pre-wrap text-sm text-muted-foreground">{transcript.source || (running ? '…' : '')}</p>
+                  </section>
+                  <section className="flex min-h-40 flex-col rounded-xl border p-3">
+                    <h3 className="mb-1 text-xs font-medium text-muted-foreground">{t('chat.live.translation')}</h3>
+                    <div ref={translatedRef} className="max-h-60 flex-1 overflow-y-auto whitespace-pre-wrap text-base">{transcript.translated || (running ? '…' : '')}</div>
+                  </section>
+                </div>
 
-            {detail && status === 'error' && (
-              <p role="alert" className="text-sm text-destructive">{t('chat.live.failed', { reason: detail })}</p>
-            )}
-            {!supported && <p className="text-sm text-muted-foreground">{t('chat.live.unsupported')}</p>}
-
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-                <span className={cn('size-2 rounded-full', status === 'live' ? 'animate-pulse bg-red-500' : status === 'connecting' ? 'bg-amber-500' : 'bg-muted-foreground/40')} />
-                {t(`chat.live.status.${status}`)}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" onClick={toggleMute} disabled={!running} aria-pressed={muted}>
-                  {muted ? <VolumeX /> : <Volume2 />} {muted ? t('chat.live.unmute') : t('chat.live.mute')}
-                </Button>
-                {running ? (
-                  <Button size="sm" variant="secondary" onClick={() => void stop()} disabled={status === 'stopping'}>
-                    <Square /> {t('chat.live.stop')}
-                  </Button>
-                ) : (
-                  <Button size="sm" onClick={() => void start()} disabled={!supported}>
-                    {source === 'mic' ? <Mic /> : <MonitorSpeaker />} {t('chat.live.start')}
-                  </Button>
+                {detail && status === 'error' && (
+                  <p role="alert" className="text-sm text-destructive">{t('chat.live.failed', { reason: detail })}</p>
                 )}
-              </div>
-            </div>
+                {!supported && <p className="text-sm text-muted-foreground">{t('chat.live.unsupported')}</p>}
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+                    <span className={cn('size-2 rounded-full', status === 'live' ? 'animate-pulse bg-red-500' : status === 'connecting' ? 'bg-amber-500' : 'bg-muted-foreground/40')} />
+                    {t(`chat.live.status.${status}`)}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" onClick={toggleMute} disabled={!running} aria-pressed={muted}>
+                      {muted ? <VolumeX /> : <Volume2 />} {muted ? t('chat.live.unmute') : t('chat.live.mute')}
+                    </Button>
+                    {running ? (
+                      <Button size="sm" variant="secondary" onClick={() => void stop()} disabled={status === 'stopping'}>
+                        <Square /> {t('chat.live.stop')}
+                      </Button>
+                    ) : (
+                      <Button size="sm" onClick={() => void start()} disabled={!supported}>
+                        {source === 'mic' ? <Mic /> : <MonitorSpeaker />} {t('chat.live.start')}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
       </DialogPopup>

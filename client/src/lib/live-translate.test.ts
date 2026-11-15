@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyLiveEvent, EMPTY_TRANSCRIPT } from './live-translate'
+import { applyLiveEvent, EMPTY_TRANSCRIPT, conversationLanes, laneInputEnabled, combineStatus, rmsLevel } from './live-translate'
 
 describe('applyLiveEvent', () => {
   it('accumulates source and translated transcript deltas separately', () => {
@@ -35,5 +35,49 @@ describe('applyLiveEvent', () => {
     expect(s.translated.length).toBeLessThanOrEqual(6001)
     expect(s.translated.startsWith('…')).toBe(true)
     expect(s.translated.endsWith('END')).toBe(true)
+  })
+})
+
+describe('conversation mode', () => {
+  it('runs one session per direction, each into the other person\'s language', () => {
+    expect(conversationLanes('room', 'en', 'es')).toEqual([
+      { speaker: 'you', source: 'mic', targetLanguage: 'es' },
+      { speaker: 'them', source: 'mic', targetLanguage: 'en' },
+    ])
+    // In a call their voice comes from the call's tab, yours from the mic.
+    expect(conversationLanes('call', 'pt', 'fr').map(l => [l.speaker, l.source, l.targetLanguage])).toEqual([
+      ['you', 'mic', 'fr'],
+      ['them', 'tab', 'pt'],
+    ])
+  })
+
+  it('in one room, opens the shared microphone only to whoever\'s turn it is', () => {
+    expect(laneInputEnabled('room', 'you', 'you', false)).toBe(true)
+    expect(laneInputEnabled('room', 'them', 'you', false)).toBe(false)
+    expect(laneInputEnabled('room', 'them', 'them', false)).toBe(true)
+    expect(laneInputEnabled('room', 'you', null, false)).toBe(false)
+  })
+
+  it('holds the microphone back while the other side\'s translation plays aloud', () => {
+    expect(laneInputEnabled('room', 'them', 'them', true)).toBe(false)
+  })
+
+  it('in a call, both directions always listen: their sources are separate', () => {
+    expect(laneInputEnabled('call', 'you', null, true)).toBe(true)
+    expect(laneInputEnabled('call', 'them', null, true)).toBe(true)
+  })
+
+  it('combines the two sessions\' states', () => {
+    expect(combineStatus('live', 'live')).toBe('live')
+    expect(combineStatus('live', 'connecting')).toBe('connecting')
+    expect(combineStatus('idle', 'idle')).toBe('idle')
+    expect(combineStatus('live', 'error')).toBe('error')
+    expect(combineStatus('stopping', 'live')).toBe('stopping')
+  })
+
+  it('measures audio level as RMS', () => {
+    expect(rmsLevel([])).toBe(0)
+    expect(rmsLevel(new Float32Array(512))).toBe(0)
+    expect(rmsLevel([0.5, -0.5, 0.5, -0.5])).toBeCloseTo(0.5)
   })
 })

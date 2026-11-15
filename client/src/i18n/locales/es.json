@@ -1412,6 +1412,31 @@
         "live": "En vivo: escuchando y traduciendo",
         "stopping": "Terminando…",
         "error": "Detenido"
+      },
+      "conv": {
+        "tabOneWay": "Una dirección",
+        "tabConversation": "Conversación",
+        "setup": "¿Dónde es la conversación?",
+        "room": "Misma sala",
+        "call": "Videollamada",
+        "yourLanguage": "Tu idioma",
+        "theirLanguage": "Su idioma",
+        "you": "Tú · {language}",
+        "them": "La otra persona · {language}",
+        "youSaid": "Dijiste",
+        "theySaid": "Dijo",
+        "speakYou": "Estoy hablando",
+        "speakThem": "Habla la otra persona",
+        "listening": "Escuchando",
+        "waiting": "Esperando a que termine la traducción",
+        "faceToFace": "Cara a cara",
+        "roomHint": "Toca tu botón antes de hablar. Cada traducción se reproduce en voz alta para la otra persona. Cara a cara gira su lado hacia ella al otro lado de la mesa.",
+        "callHint": "Comparte la pestaña del navegador de la llamada para su voz; tu micrófono lleva la tuya. Usa auriculares para que la traducción no se vuelva a captar.",
+        "voiceOut": "Tu voz traducida",
+        "voiceOutNone": "No reproducirla (solo subtítulos)",
+        "voiceOutDevice": "Este dispositivo",
+        "voiceOutHelp": "Para que la escuchen en la llamada, elige aquí un cable de audio virtual y selecciónalo como micrófono en tu aplicación de llamadas.",
+        "hearOriginal": "Escuchar también el audio original de la llamada"
       }
     },
     "public": {

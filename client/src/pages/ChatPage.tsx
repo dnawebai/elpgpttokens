@@ -196,7 +196,7 @@ export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public'
   const voiceOffMessage = voicePaused ? t('chat.public.premium.paused') : t('chat.public.voiceSubscribersOnly')
   const liveKeepAlive = useMemo(() => ({
     everyMs: LIVE_KEEPALIVE_MS,
-    run: () => publicFetch('/api/public/realtime/extend', { method: 'POST', body: JSON.stringify({ sessions: 1 }) }),
+    run: (sessions: 1 | 2) => publicFetch('/api/public/realtime/extend', { method: 'POST', body: JSON.stringify({ sessions }) }),
   }), [])
   const manageBilling = async () => {
     try {

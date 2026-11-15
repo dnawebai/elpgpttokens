@@ -91,11 +91,40 @@ attached.
   `gpt-realtime-translate`. Pick a target language and an audio source (your
   microphone, or a browser tab such as a video call or YouTube) and hear the
   translation a moment later, with original and translated transcripts on
-  screen. The source language is detected automatically. See
+  screen. The source language is detected automatically. Its **Conversation**
+  tab translates both ways between two people; see
+  [Conversation mode](#conversation-mode) and
   [How the live interpreter connects](#how-the-live-interpreter-connects).
 - **Images**: generated images show inline with a download link; attach images
   for vision questions.
 - **Model**: Auto by default, or pin one premium model.
+
+## Conversation mode
+
+The Conversation tab runs one translation session per direction, as OpenAI
+recommends for two people: your speech into their language, and theirs into
+yours. Each half of the screen reads in its own language: the other person's
+words translated, and its own words as heard.
+
+- **Same room.** One device and one microphone, so people take turns: tap your
+  button before you talk. The translation plays out loud for the other person.
+  While one side's translation is playing, the other side's microphone is held
+  back until it finishes ("Waiting for the translation to finish"), so the app
+  never translates its own voice back. **Face to face** turns the other
+  person's half upside down for someone across a table.
+- **Video call.** Their voice comes from the call's browser tab (share it with
+  "Share tab audio"), yours from your microphone, so both directions listen at
+  once. Wear headphones so the translation isn't picked up again. **Hear the
+  original call audio too** keeps the tab's own sound playing; it is off by
+  default, so you hear only the translation. **Your translated voice** sets
+  where your translation plays. The default is nowhere: they read it as
+  captions. Choose a virtual audio cable (VB-Cable, BlackHole and the like)
+  and select it as the microphone in the call app, and the other person hears
+  you in their language.
+
+Conversation mode runs two sessions at once, so it uses twice the OpenAI time
+of one-way interpreting. On the public chat it draws two 5-minute blocks at a
+time from the premium allowance.
 
 ## How the live interpreter connects
 
@@ -280,6 +309,6 @@ localhost:3001/api/public/billing/webhook`) to try it locally.
 
 ## Not in this release
 
-- **Two-way conversations.** The live interpreter translates one direction at a
-  time, into the chosen language. A two-person call needs one session per
-  direction with separate audio tracks, as OpenAI recommends.
+- **Group calls.** Conversation mode is for two people. A group needs one
+  session per speaker and target language, best run as a server-side media
+  worker that subscribes to each speaker once.

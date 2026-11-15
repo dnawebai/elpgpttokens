@@ -1412,6 +1412,31 @@
         "live": "Live: listening and translating",
         "stopping": "Finishing…",
         "error": "Stopped"
+      },
+      "conv": {
+        "tabOneWay": "One-way",
+        "tabConversation": "Conversation",
+        "setup": "Where is the conversation?",
+        "room": "Same room",
+        "call": "Video call",
+        "yourLanguage": "Your language",
+        "theirLanguage": "Their language",
+        "you": "You · {language}",
+        "them": "Them · {language}",
+        "youSaid": "You said",
+        "theySaid": "They said",
+        "speakYou": "I'm speaking",
+        "speakThem": "They're speaking",
+        "listening": "Listening",
+        "waiting": "Waiting for the translation to finish",
+        "faceToFace": "Face to face",
+        "roomHint": "Tap your button before you talk. Each translation plays out loud for the other person. Face to face turns their side toward them across a table.",
+        "callHint": "Share the call's browser tab for their voice; your microphone carries yours. Wear headphones so the translation isn't picked up again.",
+        "voiceOut": "Your translated voice",
+        "voiceOutNone": "Don't play it (captions only)",
+        "voiceOutDevice": "This device",
+        "voiceOutHelp": "To let them hear it in the call, pick a virtual audio cable here and choose it as the microphone in your call app.",
+        "hearOriginal": "Hear the original call audio too"
       }
     },
     "public": {
