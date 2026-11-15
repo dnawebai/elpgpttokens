@@ -44,6 +44,14 @@ export interface ParseResult {
 }
 
 export const PREFIX_MAP: Record<string, string> = {
+  // Premium platforms match only their API-key variable: OPENAI_BASE_URL,
+  // OPENAI_MODEL, ANTHROPIC_MODEL… are common in other tools' .env files and
+  // must not be imported as keys (a matched prefix imports any value).
+  ANTHROPIC_API_KEY: 'anthropic',
+  CLAUDE_API_KEY: 'anthropic',
+  OPENAI_API_KEY: 'openai',
+  PERPLEXITY_API_KEY: 'perplexity',
+  PPLX_API_KEY: 'perplexity',
   ACLIDE_: 'aclide',
   SPEKA_: 'speka',
   KENARI_: 'kenari',
@@ -172,6 +180,9 @@ export const PREFIX_MAP: Record<string, string> = {
 };
 
 export const AUTH_JSON_PROVIDER_MAP: Record<string, string> = {
+  anthropic: 'anthropic',
+  openai: 'openai',
+  perplexity: 'perplexity',
   gemini: 'google',
   google: 'google',
   groq: 'groq',

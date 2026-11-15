@@ -174,11 +174,32 @@ describe('key parser', () => {
   });
 
   it('keeps unknown but key-like values for preview', () => {
-    const result = parseKeysFromFile('ANTHROPIC_API_KEY=sk-ant-test-value\nPORT=3001', 'keys.env');
+    const result = parseKeysFromFile('ACMEAI_API_KEY=sk-acme-test-value\nPORT=3001', 'keys.env');
     expect(result.keys).toEqual([
-      { rawKey: 'ANTHROPIC_API_KEY=sk-ant-test-value', prefix: 'ANTHROPIC_', platform: null },
+      { rawKey: 'ACMEAI_API_KEY=sk-acme-test-value', prefix: 'ACMEAI_', platform: null },
     ]);
     expect(result.skipped).toEqual(['PORT: value does not look like an API key']);
+  });
+
+  it('imports ELPGPT premium API keys by their exact variable names only', () => {
+    const result = parseKeysFromFile([
+      'ANTHROPIC_API_KEY=sk-ant-test-value',
+      'OPENAI_API_KEY=sk-proj-test-value',
+      'PERPLEXITY_API_KEY=pplx-test-value',
+      'PPLX_API_KEY=pplx-second-value',
+      // Other tools' settings that share the prefix must not become keys.
+      'OPENAI_BASE_URL=https://api.openai.com/v1',
+      'OPENAI_MODEL=gpt-6.1-sol',
+    ].join('\n'), 'keys.env');
+    expect(result.keys.map(k => [k.rawKey.split('=')[0], k.platform])).toEqual([
+      ['ANTHROPIC_API_KEY', 'anthropic'],
+      ['OPENAI_API_KEY', 'openai'],
+      ['PERPLEXITY_API_KEY', 'perplexity'],
+      ['PPLX_API_KEY', 'perplexity'],
+      // Key-like but unattributed: previewed as unknown, never imported as OpenAI.
+      ['OPENAI_MODEL', null],
+    ]);
+    expect(result.skipped).toEqual(['OPENAI_BASE_URL: value does not look like an API key']);
   });
 
   it.each([['CLOD', 'clod'], ['SPEECHIFY', 'speechify'], ['BLAZE', 'blaze'], ['BLAZEAPI', 'blaze'], ['LUCIDITY', 'lucidity'], ['AIRFORCE', 'airforce'], ['API_AIRFORCE', 'airforce'], ['DREAMPROMPTING', 'dreamprompting'], ['DREAM_PROMPTING', 'dreamprompting'], ['WATERFALL', 'waterfall'], ['LOGFARE', 'logfare']])('imports %s environment keys', (prefix, platform) => {

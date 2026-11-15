@@ -21,6 +21,7 @@
     "db:migration:create": "tsx src/db/migrate/cli.ts create"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@freellmapi/shared": "*",
     "ajv": "^8.20.0",
     "compression": "^1.8.0",

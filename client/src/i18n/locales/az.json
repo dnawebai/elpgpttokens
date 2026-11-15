@@ -16,7 +16,8 @@
     "modelsMenu": "Model tiplərinə baxın",
     "agents": "Agentlər",
     "logs": "Loglar",
-    "analyticsMenu": "Analitika səhifələri"
+    "analyticsMenu": "Analitika səhifələri",
+    "chat": "Chat"
   },
   "auth": {
     "createYourAccount": "Hesabınızı yaradın",
@@ -1335,5 +1336,58 @@
     "tryConfidence": "{value}% əmin",
     "tryServedBy": "{model} · {latency} ms",
     "exampleTitle": "Nümunə sorğu"
+  },
+  "chat": {
+    "title": "ELPGPT Chat",
+    "tagline": "Claude, ChatGPT and Perplexity in one chat. ELPGPT picks the best model for every message.",
+    "newChat": "New chat",
+    "placeholder": "Ask anything: search the web, create an image, write code, translate…",
+    "translatePlaceholder": "Type or speak what you want translated…",
+    "send": "Send",
+    "stop": "Stop",
+    "attach": "Attach image",
+    "attachFailed": "Could not read that image.",
+    "removeAttachment": "Remove image",
+    "routingTo": "Routing to",
+    "answeredBy": "Answered by",
+    "freeFallback": "No premium key for this task yet, so free models will answer.",
+    "addKey": "Add a key",
+    "connected": "Connected",
+    "notConnected": "Not connected",
+    "modelPicker": "Model",
+    "modeAuto": "Auto (best model for each message)",
+    "translate": "Translate",
+    "translateTo": "to",
+    "speakReplies": "Read replies aloud",
+    "stopSpeaking": "Stop speaking",
+    "voiceHint": "Voice conversation: tap the mic, speak, and the answer is read back.",
+    "voiceUnavailable": "Reading replies aloud needs a text-to-speech model. Add one on the Audio models page.",
+    "speechFailed": "Could not read the reply aloud: {reason}",
+    "sources": "Sources",
+    "thinking": "Thinking…",
+    "generatingImage": "Creating your image…",
+    "downloadImage": "Download",
+    "showReasoning": "Show reasoning",
+    "errorPrefix": "Something went wrong: {message}",
+    "retry": "Retry",
+    "copy": "Copy",
+    "emptyTitle": "One chat. Every model.",
+    "emptyBody": "No more paying for several AI subscriptions. Start typing and ELPGPT routes your message to the right model: live web search, image creation, code, writing or translation.",
+    "example": {
+      "search": "Search the latest AI news today",
+      "image": "Create an image of a lighthouse at sunset, watercolor style",
+      "code": "Fix this: TypeError: Cannot read properties of undefined (reading 'map')",
+      "translate": "Translate to Spanish: Where is the train station?"
+    },
+    "intent": {
+      "web_search": "Web search",
+      "image_generation": "Image",
+      "code": "Code",
+      "reasoning": "Reasoning",
+      "writing": "Writing",
+      "translation": "Translation",
+      "vision": "Vision",
+      "chat": "Chat"
+    }
   }
 }

@@ -31,6 +31,7 @@ import { toast } from '@/lib/toast'
 import { ThemeProvider } from '@/theme'
 import KeysPage from '@/pages/KeysPage'
 import PlaygroundPage from '@/pages/PlaygroundPage'
+import ChatPage from '@/pages/ChatPage'
 import FallbackPage from '@/pages/FallbackPage'
 import ModelDetailPage from '@/pages/ModelDetailPage'
 import FusionPage from '@/pages/FusionPage'
@@ -70,6 +71,7 @@ const queryClient = new QueryClient({
 })
 
 const navItems = [
+  { to: '/chat', labelKey: 'nav.chat' },
   { to: '/models', labelKey: 'nav.models' },
   { to: '/playground', labelKey: 'nav.playground' },
   { to: '/keys', labelKey: 'nav.keys' },
@@ -419,7 +421,7 @@ function PageBoundary({ children }: { children: ReactNode }) {
 // padded column. Only the Playground so far: its three columns run edge to edge
 // and the transcript scrolls inside its own pane, so the page must be exactly
 // as tall as what is left under the navbar — not a centred card with margins.
-const FULL_BLEED_ROUTES = new Set(['/playground'])
+const FULL_BLEED_ROUTES = new Set(['/playground', '/chat'])
 
 // The shell's content container. A full-bleed route drops the max-width and the
 // padding and becomes a flex child that fills the rest of the screen; every
@@ -493,6 +495,7 @@ function App() {
                       <Route path="/models/transcription/:id" element={<MediaDetailPage modality="transcription" />} />
                       <Route path="/models/search" element={<SearchPage />} />
                       <Route path="/models/decision" element={<DecisionPage />} />
+                      <Route path="/chat" element={<ChatPage />} />
                       <Route path="/playground" element={<PlaygroundPage />} />
                       <Route path="/keys" element={<KeysPage />} />
                       <Route path="/agents" element={<AgentsPage />} />

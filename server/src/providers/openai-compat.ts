@@ -152,6 +152,10 @@ export class OpenAICompatProvider extends BaseProvider {
   private readonly forwardsPartial: boolean;
   /** Optional provider-reported quota endpoint (#1403). */
   private readonly quotaProbe?: QuotaProbeSpec;
+  /** Wire name for the output-token limit. OpenAI's reasoning models (GPT-5
+   *  onward, o-series) reject `max_tokens` and only accept
+   *  `max_completion_tokens`; every other compat endpoint takes `max_tokens`. */
+  private readonly maxTokensField: 'max_tokens' | 'max_completion_tokens';
 
   constructor(opts: {
     platform: Platform;
@@ -163,6 +167,7 @@ export class OpenAICompatProvider extends BaseProvider {
     keyless?: boolean;
     forceSingleToolCall?: boolean;
     quotaProbe?: QuotaProbeSpec;
+    maxTokensField?: 'max_tokens' | 'max_completion_tokens';
   }) {
     super();
     this.platform = opts.platform;
@@ -176,6 +181,7 @@ export class OpenAICompatProvider extends BaseProvider {
     this.forceSingleToolCall = opts.forceSingleToolCall ?? false;
     this.forwardsPartial = opts.platform === 'custom' && isMoonshotEndpoint(opts.baseUrl);
     this.quotaProbe = opts.quotaProbe;
+    this.maxTokensField = opts.maxTokensField ?? 'max_tokens';
   }
 
   /** Resolve the parallel_tool_calls flag to send upstream. For providers that
@@ -294,7 +300,9 @@ export class OpenAICompatProvider extends BaseProvider {
    * shape but strip our internal reasoning / thought-signature extensions
    * before sending to these platforms.
    */
-  private static readonly STRICT_PLATFORMS = new Set(['mistral', 'groq', 'cerebras']);
+  // OpenAI validates message objects against its schema and 400s on the
+  // gateway's replay extensions the same way.
+  private static readonly STRICT_PLATFORMS = new Set(['mistral', 'groq', 'cerebras', 'openai']);
   private messagesForPlatform(messages: ChatMessage[], modelId: string): ChatMessage[] {
     if (OpenAICompatProvider.STRICT_PLATFORMS.has(this.platform)) {
       // Rebuild every message from a whitelist of keys, so `partial` and the
@@ -382,7 +390,7 @@ export class OpenAICompatProvider extends BaseProvider {
         model: modelId,
         messages: this.messagesForPlatform(messages, modelId),
         temperature: sampling.temperature,
-        max_tokens: resolveMaxTokens(this.platform, options?.max_tokens, options?.contextBudget),
+        [this.maxTokensField]: resolveMaxTokens(this.platform, options?.max_tokens, options?.contextBudget),
         top_p: sampling.topP,
         stop: options?.stop,
         tools: options?.tools,
@@ -514,7 +522,7 @@ export class OpenAICompatProvider extends BaseProvider {
         model: modelId,
         messages: this.messagesForPlatform(messages, modelId),
         temperature: sampling.temperature,
-        max_tokens: resolveMaxTokens(this.platform, options?.max_tokens, options?.contextBudget),
+        [this.maxTokensField]: resolveMaxTokens(this.platform, options?.max_tokens, options?.contextBudget),
         top_p: sampling.topP,
         stop: options?.stop,
         tools: options?.tools,

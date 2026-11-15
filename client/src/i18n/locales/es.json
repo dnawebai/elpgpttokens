@@ -16,7 +16,8 @@
     "modelsMenu": "Explorar tipos de modelos",
     "agents": "Agentes",
     "logs": "Registros",
-    "analyticsMenu": "Páginas de analíticas"
+    "analyticsMenu": "Páginas de analíticas",
+    "chat": "Chat"
   },
   "auth": {
     "createYourAccount": "Crea tu cuenta",
@@ -1335,5 +1336,58 @@
     "tryConfidence": "{value} % de confianza",
     "tryServedBy": "{model} · {latency} ms",
     "exampleTitle": "Solicitud de ejemplo"
+  },
+  "chat": {
+    "title": "ELPGPT Chat",
+    "tagline": "Claude, ChatGPT y Perplexity en un solo chat. ELPGPT elige el mejor modelo para cada mensaje.",
+    "newChat": "Nuevo chat",
+    "placeholder": "Pregunta lo que quieras: busca en la web, crea una imagen, escribe código, traduce…",
+    "translatePlaceholder": "Escribe o di lo que quieres traducir…",
+    "send": "Enviar",
+    "stop": "Detener",
+    "attach": "Adjuntar imagen",
+    "attachFailed": "No se pudo leer esa imagen.",
+    "removeAttachment": "Quitar imagen",
+    "routingTo": "Enviando a",
+    "answeredBy": "Respondido por",
+    "freeFallback": "Todavía no hay una clave premium para esta tarea, así que responderán modelos gratuitos.",
+    "addKey": "Añadir una clave",
+    "connected": "Conectado",
+    "notConnected": "No conectado",
+    "modelPicker": "Modelo",
+    "modeAuto": "Automático (el mejor modelo para cada mensaje)",
+    "translate": "Traducir",
+    "translateTo": "al",
+    "speakReplies": "Leer respuestas en voz alta",
+    "stopSpeaking": "Dejar de hablar",
+    "voiceHint": "Conversación por voz: toca el micrófono, habla y la respuesta se lee en voz alta.",
+    "voiceUnavailable": "Para leer respuestas en voz alta hace falta un modelo de texto a voz. Añade uno en la página de modelos de audio.",
+    "speechFailed": "No se pudo leer la respuesta en voz alta: {reason}",
+    "sources": "Fuentes",
+    "thinking": "Pensando…",
+    "generatingImage": "Creando tu imagen…",
+    "downloadImage": "Descargar",
+    "showReasoning": "Ver razonamiento",
+    "errorPrefix": "Algo salió mal: {message}",
+    "retry": "Reintentar",
+    "copy": "Copiar",
+    "emptyTitle": "Un chat. Todos los modelos.",
+    "emptyBody": "Deja de pagar varias suscripciones de IA. Empieza a escribir y ELPGPT envía tu mensaje al modelo adecuado: búsqueda web en vivo, creación de imágenes, código, redacción o traducción.",
+    "example": {
+      "search": "Busca las últimas noticias de IA de hoy",
+      "image": "Crea una imagen de un faro al atardecer, estilo acuarela",
+      "code": "Arregla esto: TypeError: Cannot read properties of undefined (reading 'map')",
+      "translate": "Traduce al inglés: ¿Dónde está la estación de tren?"
+    },
+    "intent": {
+      "web_search": "Búsqueda web",
+      "image_generation": "Imagen",
+      "code": "Código",
+      "reasoning": "Razonamiento",
+      "writing": "Redacción",
+      "translation": "Traducción",
+      "vision": "Visión",
+      "chat": "Chat"
+    }
   }
 }
