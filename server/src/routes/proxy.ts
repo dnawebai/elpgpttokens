@@ -2262,7 +2262,9 @@ proxyRouter.post('/chat/completions', async (req: Request, res: Response) => {
   // The decision rides in the X-ELP-Route header (URI-encoded JSON).
   let elpDecision: ElpDecision | undefined;
   if (isElpAutoModel(requestedModel)) {
-    elpDecision = decideElpRoute(messages);
+    // Public free tiers set this on the request in-process (routes/public.ts);
+    // it is never read from a header, so a client cannot grant itself premium.
+    elpDecision = decideElpRoute(messages, { allowPremium: (req as Request & { elpAllowPremium?: boolean }).elpAllowPremium !== false });
     if (elpDecision.info.kind === 'image') {
       res.setHeader('X-ELP-Route', encodeRouteHeader(elpDecision.info));
       await serveElpImage(res, elpDecision, messages, Boolean(stream), requestGroupId);

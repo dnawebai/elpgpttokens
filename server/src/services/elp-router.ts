@@ -235,7 +235,7 @@ function label(platform: string | null, model: string | null, db: Db): string {
  * Decide where an elpgpt-auto request goes. Pure with respect to the request:
  * reads the catalog and key table, writes nothing.
  */
-export function decideElpRoute(messages: ChatMessage[], opts: { table?: ElpRouteTable; db?: Db } = {}): ElpDecision {
+export function decideElpRoute(messages: ChatMessage[], opts: RouteOptions = {}): ElpDecision {
   const db = opts.db ?? getDb();
   const table = opts.table ?? loadRouteTable();
   const lastIdx = lastUserIndex(messages);
@@ -245,15 +245,24 @@ export function decideElpRoute(messages: ChatMessage[], opts: { table?: ElpRoute
     hasImageAttachment: hasImagePart(messages[lastIdx]),
     previousIntent,
   });
-  return resolveIntentRoute(intent, { db, table });
+  return resolveIntentRoute(intent, { db, table, allowPremium: opts.allowPremium });
+}
+
+export interface RouteOptions {
+  table?: ElpRouteTable;
+  db?: Db;
+  /** False for public visitors and free members: premium platforms are
+   *  treated as keyless, so every intent lands on the free pool. */
+  allowPremium?: boolean;
 }
 
 /** The routing half of decideElpRoute, for a known intent (also used by the
  *  live preview endpoint). */
-export function resolveIntentRoute(intent: IntentResult, opts: { table?: ElpRouteTable; db?: Db } = {}): ElpDecision {
+export function resolveIntentRoute(intent: IntentResult, opts: RouteOptions = {}): ElpDecision {
   const db = opts.db ?? getDb();
   const table = opts.table ?? loadRouteTable();
   const keys = usablePlatforms(db);
+  if (opts.allowPremium === false) for (const p of ELP_PLATFORMS) keys.delete(p);
   const targets = table[intent.intent] ?? [];
   const base = { intent: intent.intent, reason: intent.reason, confidence: intent.confidence };
 

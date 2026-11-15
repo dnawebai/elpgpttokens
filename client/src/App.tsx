@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
-import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ChevronDown, KeyRound, LogOut, Menu, MoreHorizontal, RefreshCw, Search, Settings, Sparkles } from 'lucide-react'
+import { MutationCache, QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { ChevronDown, KeyRound, Loader2, LogOut, Menu, MoreHorizontal, RefreshCw, Search, Settings, Sparkles } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -26,12 +26,13 @@ import { UpdateReminder } from '@/components/update-reminder'
 import { NewBuildPrompt } from '@/components/new-build-prompt'
 import { usePremium } from '@/hooks/use-premium'
 import { I18nProvider, useI18n } from '@/i18n'
-import { logout } from '@/lib/api'
+import { apiFetch, logout } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import { ThemeProvider } from '@/theme'
 import KeysPage from '@/pages/KeysPage'
 import PlaygroundPage from '@/pages/PlaygroundPage'
 import ChatPage from '@/pages/ChatPage'
+import { publicFetch, type PublicStatus } from '@/lib/public-api'
 import FallbackPage from '@/pages/FallbackPage'
 import ModelDetailPage from '@/pages/ModelDetailPage'
 import FusionPage from '@/pages/FusionPage'
@@ -463,12 +464,52 @@ function AppShell({ children }: { children: ReactNode }) {
   )
 }
 
+// elpgpt.com/chat for the public. /chat normally sits behind the dashboard
+// login like every page; when the server has public chat switched on and the
+// browser holds no operator session, visitors and members get the public chat
+// instead of a login screen. Every other path, and every install without
+// public chat, renders exactly what it did before.
+function PublicChatGate({ children }: { children: ReactNode }) {
+  const location = useLocation()
+  const onChat = location.pathname === '/chat'
+  const auth = useQuery<{ authenticated: boolean }>({
+    queryKey: ['auth-status'],
+    queryFn: () => apiFetch('/api/auth/status'),
+    retry: false,
+    enabled: onChat,
+  })
+  const pub = useQuery<PublicStatus>({
+    queryKey: ['public-chat-enabled'],
+    queryFn: () => publicFetch('/api/public/status'),
+    retry: false,
+    enabled: onChat,
+  })
+  if (!onChat) return <>{children}</>
+  if (auth.isLoading || pub.isLoading) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-background">
+        <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden />
+      </div>
+    )
+  }
+  if (auth.data?.authenticated || !pub.data?.enabled) return <>{children}</>
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+      <PageBoundary>
+        <ChatPage mode="public" />
+      </PageBoundary>
+      <Toaster />
+    </div>
+  )
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <I18nProvider>
           <BrowserRouter basename={import.meta.env.BASE_URL}>
+            <PublicChatGate>
             <AuthGate>
               {/* Column, so a full-bleed route can claim the height the navbar
                   leaves without anyone having to know how tall the navbar is.
@@ -515,6 +556,7 @@ function App() {
                 <NewBuildPrompt />
               </AppShell>
             </AuthGate>
+            </PublicChatGate>
           </BrowserRouter>
         </I18nProvider>
       </ThemeProvider>

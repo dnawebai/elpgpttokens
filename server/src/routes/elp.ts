@@ -7,6 +7,7 @@ import { loadRouteTable, resolveIntentRoute, ELP_AUTO_MODEL } from '../services/
 import { searchAvailable } from '../services/search.js';
 import { startLiveTranslation, LiveTranslateError, liveTranslateModel } from '../services/live-translate.js';
 import type { SessionUser } from '../services/auth.js';
+import { listMembers, updateMember, quotaState, memberSubject, publicChatEnabled, dailyLimit } from '../services/members.js';
 
 /**
  * Dashboard API behind /chat (requireAuth). The chat itself goes through the
@@ -85,4 +86,34 @@ elpRouter.post('/realtime/translate', async (req: Request, res: Response) => {
       },
     });
   }
+});
+
+// ── Public chat members (operator view) ────────────────────────────────────
+// Billing is not wired yet, so the operator grants the subscriber plan here.
+elpRouter.get('/members', (_req: Request, res: Response) => {
+  res.json({
+    publicChatEnabled: publicChatEnabled(),
+    limits: { visitor: dailyLimit('visitor'), free: dailyLimit('free'), subscriber: dailyLimit('subscriber') },
+    members: listMembers().map(m => ({ ...m, today: quotaState(memberSubject(m), m.plan) })),
+  });
+});
+
+const memberPatchSchema = z.object({
+  plan: z.enum(['free', 'subscriber']).optional(),
+  disabled: z.boolean().optional(),
+});
+
+elpRouter.patch('/members/:id', (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const parsed = memberPatchSchema.safeParse(req.body);
+  if (!Number.isInteger(id) || !parsed.success) {
+    res.status(400).json({ error: { message: 'Invalid member update', type: 'invalid_request_error' } });
+    return;
+  }
+  const member = updateMember(id, parsed.data);
+  if (!member) {
+    res.status(404).json({ error: { message: 'Member not found', type: 'invalid_request_error' } });
+    return;
+  }
+  res.json({ member });
 });

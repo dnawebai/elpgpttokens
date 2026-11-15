@@ -18,6 +18,7 @@ import { embeddingsRouter } from './routes/embeddings.js';
 import { mediaRouter } from './routes/media.js';
 import { searchRouter } from './routes/search.js';
 import { elpRouter } from './routes/elp.js';
+import { publicRouter } from './routes/public.js';
 import { decisionsRouter } from './routes/decisions.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { healthRouter } from './routes/health.js';
@@ -245,6 +246,9 @@ export function createApp(config?: Config) {
   // session; everything else under /api/* requires a logged-in dashboard user.
   // The /v1 proxy keeps its own unified-API-key auth and is NOT gated here.
   app.use('/api/auth', authRouter);
+  // Public elpgpt.com/chat (members and visitors, no dashboard session). Off
+  // unless ELPGPT_PUBLIC_CHAT is set; see routes/public.ts.
+  app.use('/api/public', publicRouter);
 
   // Key export re-verifies the dashboard password, which makes it the one admin
   // endpoint a guesser can attack. The broad limiter above is sized for normal

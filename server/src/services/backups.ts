@@ -77,8 +77,10 @@ function httpError(message: string, status: number): Error {
 // restoring one must not resurrect deleted accounts or revoked sessions (or
 // log the current operator out mid-restore). `settings` is deliberately NOT
 // here: routing strategy, the unified key and the proxy config are exactly
-// what an operator expects a backup to bring back.
-const EXCLUDED_TABLES = new Set(['users', 'sessions', 'url_tokens']);
+// what an operator expects a backup to bring back. The ELPGPT public-chat
+// member accounts and sessions are credentials under the same rule; their
+// daily usage counters (elp_usage) hold nothing secret and stay in.
+const EXCLUDED_TABLES = new Set(['users', 'sessions', 'url_tokens', 'elp_members', 'elp_member_sessions']);
 
 /** `backups` is the on-disk backup index itself; dumping and restoring it
  *  would wipe the metadata that tracks the files. `migrations` is the schema

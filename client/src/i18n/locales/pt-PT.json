@@ -1413,6 +1413,42 @@
         "stopping": "A terminar…",
         "error": "Parado"
       }
+    },
+    "public": {
+      "visitor": "Convidado",
+      "free": "Grátis",
+      "subscriber": "Subscritor",
+      "remaining": "Restam {remaining} de {limit} mensagens hoje",
+      "signIn": "Entrar",
+      "createAccount": "Criar conta",
+      "signOut": "Sair",
+      "upgradeHint": "Os subscritores usam Claude, ChatGPT, Perplexity e criação de imagens para isto.",
+      "subscribersOnly": "O intérprete em direto faz parte da subscrição.",
+      "voiceSubscribersOnly": "A voz faz parte da subscrição.",
+      "account": {
+        "title": "A sua conta ELPGPT",
+        "why": "As contas gratuitas têm {free} mensagens por dia. Os subscritores têm {subscriber}, além de Claude, ChatGPT, Perplexity e voz.",
+        "email": "E-mail",
+        "password": "Palavra-passe",
+        "passwordHint": "Pelo menos 8 caracteres",
+        "signupClosed": "Os novos registos estão fechados de momento."
+      }
+    },
+    "members": {
+      "open": "Membros",
+      "title": "Membros do chat público",
+      "description": "As pessoas que usam o chat público. Dê a alguém o plano Subscritor para desbloquear os modelos premium, a voz e o intérprete em direto.",
+      "disabledNotice": "O chat público está desligado. Defina ELPGPT_PUBLIC_CHAT=1 no servidor para abrir /chat aos visitantes.",
+      "limits": "Mensagens por dia: convidados {visitor}, grátis {free}, subscritores {subscriber}",
+      "empty": "Ainda não há membros.",
+      "email": "E-mail",
+      "plan": "Plano",
+      "today": "Hoje",
+      "status": "Estado",
+      "active": "Ativo",
+      "disabled": "Desativado",
+      "disable": "Desativar",
+      "enable": "Ativar"
     }
   }
 }

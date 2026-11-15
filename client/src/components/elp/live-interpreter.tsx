@@ -8,7 +8,7 @@ import { Dialog, DialogClose, DialogDescription, DialogPopup, DialogTitle } from
 import { TRANSLATE_LANGUAGES } from '@/lib/elp-chat'
 import {
   EMPTY_TRANSCRIPT, liveTranslateSupported, startLiveTranslation,
-  type LiveSession, type LiveSource, type LiveStatus, type LiveTranscript,
+  type LiveSession, type LiveSource, type LiveStatus, type LiveTranscript, type StartLiveOptions,
 } from '@/lib/live-translate'
 
 // Live interpreter: speak (or play a tab) in any language and hear it in the
@@ -20,9 +20,13 @@ interface LiveInterpreterProps {
   /** False when no OpenAI key is connected. */
   available: boolean
   defaultLanguage?: string
+  /** Custom SDP exchange (public chat); defaults to the dashboard endpoint. */
+  handshake?: StartLiveOptions['handshake']
+  /** Message shown when unavailable; defaults to "needs an OpenAI key". */
+  unavailableMessage?: string
 }
 
-export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage = 'en' }: LiveInterpreterProps) {
+export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage = 'en', handshake, unavailableMessage }: LiveInterpreterProps) {
   const { t } = useI18n()
   const [language, setLanguage] = useState(defaultLanguage)
   const [source, setSource] = useState<LiveSource>('mic')
@@ -60,6 +64,7 @@ export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage
       sessionRef.current = await startLiveTranslation({
         targetLanguage: language,
         source,
+        handshake,
         onTranscript: setTranscript,
         onStatus: (s, d) => {
           setStatus(s)
@@ -98,7 +103,9 @@ export function LiveInterpreter({ open, onOpenChange, available, defaultLanguage
 
         {!available ? (
           <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-            {t('chat.live.needsOpenAI')} <Link to="/keys" className="underline" onClick={() => onOpenChange(false)}>{t('chat.addKey')}</Link>
+            {unavailableMessage ?? (
+              <>{t('chat.live.needsOpenAI')} <Link to="/keys" className="underline" onClick={() => onOpenChange(false)}>{t('chat.addKey')}</Link></>
+            )}
           </p>
         ) : (
           <>

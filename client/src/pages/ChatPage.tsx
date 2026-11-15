@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Brain, Code, Download, ExternalLink, Eye, Image as ImageIcon, KeyRound, Languages, MessageCircle,
-  AudioLines, Paperclip, PenLine, Plus, RotateCcw, Search, Send, Sparkles, Square, Volume2, VolumeX, X,
+  AudioLines, LogOut, Paperclip, PenLine, UserRound, Users, Plus, RotateCcw, Search, Send, Sparkles, Square, Volume2, VolumeX, X,
 } from 'lucide-react'
 import type { ElpRouteInfo } from '@freellmapi/shared/types'
 import { apiFetch } from '@/lib/api'
@@ -15,6 +15,11 @@ import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { DictationButton } from '@/components/playground/dictation-button'
 import { LiveInterpreter } from '@/components/elp/live-interpreter'
+import { AccountDialog } from '@/components/elp/account-dialog'
+import { MembersDialog } from '@/components/elp/members-dialog'
+import {
+  getMemberToken, setMemberToken, publicFetch, publicHeaders, publicUrl, quotaSummary, type PublicStatus,
+} from '@/lib/public-api'
 import { appendDictation, hasTranscription, type TranscriptionModelRow } from '@/lib/transcription'
 import { readImageAttachment, IMAGE_MIME_TYPES, MAX_ATTACHMENTS } from '@/lib/attachments'
 import {
@@ -150,15 +155,42 @@ function AssistantTurn({ turn, onRetry, onSpeak }: { turn: ChatTurn; onRetry: ()
   )
 }
 
-export default function ChatPage() {
+/**
+ * `admin`: the operator, through the unified key (every model, no quota).
+ * `public`: visitors and members of elpgpt.com/chat, through /api/public with
+ * their member token; the server enforces plan and daily quota.
+ */
+export default function ChatPage({ mode = 'admin' }: { mode?: 'admin' | 'public' }) {
   const { t } = useI18n()
-  const { data: keyData } = useQuery<{ apiKey: string }>({ queryKey: ['unified-key'], queryFn: () => apiFetch('/api/settings/api-key') })
-  const { data: status } = useQuery<ElpStatus>({ queryKey: ['elp-status'], queryFn: () => apiFetch('/api/elp/status'), refetchInterval: 60_000 })
-  const { data: mediaData } = useQuery<{ models: TranscriptionModelRow[] }>({ queryKey: ['media'], queryFn: () => apiFetch('/api/media') })
+  const isPublic = mode === 'public'
+  const [memberToken, setMemberTokenState] = useState<string | null>(() => getMemberToken())
+  const { data: keyData } = useQuery<{ apiKey: string }>({ queryKey: ['unified-key'], queryFn: () => apiFetch('/api/settings/api-key'), enabled: !isPublic })
+  const { data: status } = useQuery<ElpStatus>({ queryKey: ['elp-status'], queryFn: () => apiFetch('/api/elp/status'), refetchInterval: 60_000, enabled: !isPublic })
+  const { data: mediaData } = useQuery<{ models: TranscriptionModelRow[] }>({ queryKey: ['media'], queryFn: () => apiFetch('/api/media'), enabled: !isPublic })
+  const { data: pub, refetch: refetchPub } = useQuery<PublicStatus>({
+    queryKey: ['public-status', memberToken],
+    queryFn: () => publicFetch('/api/public/status'),
+    enabled: isPublic,
+  })
   const apiKey = keyData?.apiKey
   const mediaModels = useMemo(() => mediaData?.models ?? [], [mediaData])
-  const canDictate = hasTranscription(mediaModels)
-  const canSpeak = mediaModels.some(m => m.modality === 'audio' && m.enabled && m.keyCount > 0)
+  const ready = isPublic ? !!pub?.enabled : !!apiKey
+  const canDictate = isPublic ? !!pub?.features?.voice : hasTranscription(mediaModels)
+  const canSpeak = isPublic ? !!pub?.features?.voice : mediaModels.some(m => m.modality === 'audio' && m.enabled && m.keyCount > 0)
+  const liveAvailable = isPublic ? !!pub?.features?.liveTranslate : (status?.liveTranslate?.available ?? false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [membersOpen, setMembersOpen] = useState(false)
+  const quota = quotaSummary(pub)
+
+  const onAuthed = (token: string) => {
+    setMemberToken(token)
+    setMemberTokenState(token)
+  }
+  const signOut = async () => {
+    try { await publicFetch('/api/public/logout', { method: 'POST' }) } catch { /* token already gone */ }
+    setMemberToken(null)
+    setMemberTokenState(null)
+  }
 
   const [turns, setTurns] = useState<ChatTurn[]>(() => {
     try { return deserializeConversation(localStorage.getItem(ELP_CONVERSATION_STORAGE_KEY)) } catch { return [] }
@@ -195,13 +227,15 @@ export default function ChatPage() {
     }
     const text = translateOn ? translateCommand(input) : input
     const handle = window.setTimeout(() => {
-      apiFetch<ElpRoutePreview>('/api/elp/route', {
+      const init = {
         method: 'POST',
         body: JSON.stringify({ text, hasImage: attachments.length > 0, ...(prevIntent ? { previousIntent: prevIntent } : {}) }),
-      }).then(setPreview).catch(() => setPreview(null))
+      }
+      const request = isPublic ? publicFetch<ElpRoutePreview>('/api/public/route', init) : apiFetch<ElpRoutePreview>('/api/elp/route', init)
+      request.then(setPreview).catch(() => setPreview(null))
     }, 250)
     return () => window.clearTimeout(handle)
-  }, [input, attachments.length, translateOn, model, prevIntent])
+  }, [input, attachments.length, translateOn, model, prevIntent, isPublic, memberToken])
 
   const pinnedOptions = useMemo(() => {
     const seen = new Map<string, string>()
@@ -224,18 +258,24 @@ export default function ChatPage() {
 
   const speak = useCallback(async (markdown: string) => {
     const text = speakableText(markdown)
-    if (!text || !apiKey) return
+    if (!text || (!isPublic && !apiKey)) return
     if (!canSpeak) {
-      toast.info(t('chat.voiceUnavailable'))
+      toast.info(isPublic ? t('chat.public.voiceSubscribersOnly') : t('chat.voiceUnavailable'))
       return
     }
     stopSpeaking()
     try {
-      const res = await fetch(`${base}/v1/audio/speech`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'auto', input: text, response_format: 'mp3' }),
-      })
+      const res = isPublic
+        ? await fetch(publicUrl('/api/public/speech'), {
+          method: 'POST',
+          headers: publicHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ input: text }),
+        })
+        : await fetch(`${base}/v1/audio/speech`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: 'auto', input: text, response_format: 'mp3' }),
+        })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error?.message ?? `HTTP ${res.status}`)
       const url = URL.createObjectURL(await res.blob())
       const audio = new Audio(url)
@@ -247,12 +287,12 @@ export default function ChatPage() {
       setSpeaking(false)
       toast.error(t('chat.speechFailed', { reason: err instanceof Error ? err.message : String(err) }))
     }
-  }, [apiKey, canSpeak, stopSpeaking, t])
+  }, [apiKey, canSpeak, stopSpeaking, t, isPublic])
 
   const send = useCallback(async (override?: string, history: ChatTurn[] = turns) => {
     const text = (override ?? input).trim()
     const images = override === undefined ? attachments : []
-    if ((!text && images.length === 0) || busy || !apiKey) return
+    if ((!text && images.length === 0) || busy || !ready) return
 
     const userTurn: ChatTurn = { id: newId(), role: 'user', content: text, ...(images.length ? { attachments: images } : {}) }
     const assistantId = newId()
@@ -269,16 +309,27 @@ export default function ChatPage() {
     abortRef.current = controller
     setBusy(true)
     try {
-      const res = await fetch(`${base}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, stream: true, messages: toWireMessages(wire, translateOn ? translationSystemPrompt(targetLang) : undefined) }),
-        signal: controller.signal,
-      })
+      const messages = toWireMessages(wire, translateOn ? translationSystemPrompt(targetLang) : undefined)
+      const res = isPublic
+        ? await fetch(publicUrl('/api/public/chat'), {
+          method: 'POST',
+          headers: publicHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ stream: true, messages }),
+          signal: controller.signal,
+        })
+        : await fetch(`${base}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model, stream: true, messages }),
+          signal: controller.signal,
+        })
       const route = parseRouteHeader(res.headers.get('x-elp-route'))
       const routedVia = res.headers.get('x-routed-via')
+      if (isPublic) void refetchPub()
       if (!res.ok || !res.body) {
         const body = await res.json().catch(() => null)
+        // Out of messages or sign-in required: offer an account right away.
+        if (isPublic && ['daily_limit_reached', 'sign_in_required'].includes(body?.error?.code) && !pub?.member) setAccountOpen(true)
         throw new Error(body?.error?.message ?? `HTTP ${res.status}`)
       }
       updateTurn(assistantId, { route: route ?? null, routedVia })
@@ -303,7 +354,7 @@ export default function ChatPage() {
       setBusy(false)
       abortRef.current = null
     }
-  }, [turns, input, attachments, busy, apiKey, model, preview, translateOn, targetLang, speakOn, speak, updateTurn])
+  }, [turns, input, attachments, busy, ready, isPublic, apiKey, model, preview, translateOn, targetLang, speakOn, speak, updateTurn, refetchPub, pub?.member])
 
   const retry = (assistantId: string) => {
     const idx = turns.findIndex(turn => turn.id === assistantId)
@@ -348,16 +399,32 @@ export default function ChatPage() {
           <p className="text-xs text-muted-foreground">{t('chat.tagline')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {(status?.providers ?? []).map(p => (
+          {isPublic && pub?.tier && (
+            <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs', pub.tier === 'subscriber' && 'border-primary/40 bg-primary/10')}>
+              <UserRound className="size-3.5" /> {t(`chat.public.${pub.tier}`)}
+            </span>
+          )}
+          {isPublic && quota && (
+            <span className={cn('text-xs', quota.low ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
+              {t('chat.public.remaining', { remaining: quota.remaining, limit: quota.limit })}
+            </span>
+          )}
+          {isPublic && (pub?.member ? (
+            <Button size="sm" variant="ghost" onClick={() => void signOut()} title={pub.member.email}><LogOut /> {t('chat.public.signOut')}</Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAccountOpen(true)}><UserRound /> {t('chat.public.signIn')}</Button>
+          ))}
+          {!isPublic && (status?.providers ?? []).map(p => (
             <span key={p.platform} className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs"
               title={p.connected ? t('chat.connected') : t('chat.notConnected')}>
               <span className={cn('size-1.5 rounded-full', p.connected ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
               {PROVIDER_LABELS[p.platform]}
             </span>
           ))}
-          {missing.length > 0 && (
+          {!isPublic && missing.length > 0 && (
             <Link to="/keys" className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><KeyRound className="size-3.5" />{t('chat.addKey')}</Link>
           )}
+          {!isPublic && <Button size="sm" variant="ghost" onClick={() => setMembersOpen(true)}><Users /> {t('chat.members.open')}</Button>}
           <Button size="sm" variant="outline" onClick={newChat}><Plus /> {t('chat.newChat')}</Button>
         </div>
       </header>
@@ -395,10 +462,13 @@ export default function ChatPage() {
           <div className="flex min-h-6 flex-wrap items-center gap-2">
             {preview && <span className="text-xs text-muted-foreground">{t('chat.routingTo')}</span>}
             {preview && <RouteChip route={preview} compact />}
-            {preview?.fallback && (
+            {preview?.fallback && !isPublic && (
               <span className="text-xs text-amber-700 dark:text-amber-300">
                 {t('chat.freeFallback')} <Link to="/keys" className="underline">{t('chat.addKey')}</Link>
               </span>
+            )}
+            {preview?.fallback && isPublic && !pub?.features?.premium && (
+              <span className="text-xs text-muted-foreground">{t('chat.public.upgradeHint')}</span>
             )}
           </div>
 
@@ -434,23 +504,24 @@ export default function ChatPage() {
               model="auto"
               apiKey={apiKey}
               disabled={busy}
+              {...(isPublic ? { endpoint: publicUrl('/api/public/transcriptions'), headers: publicHeaders() } : {})}
               onText={text => (speakOn ? void send(text) : setInput(prev => appendDictation(prev, text)))}
             />
             {busy ? (
               <Button size="icon-sm" variant="secondary" onClick={() => abortRef.current?.abort()} aria-label={t('chat.stop')}><Square /></Button>
             ) : (
-              <Button size="icon-sm" onClick={() => void send()} disabled={(!input.trim() && attachments.length === 0) || !apiKey} aria-label={t('chat.send')}><Send /></Button>
+              <Button size="icon-sm" onClick={() => void send()} disabled={(!input.trim() && attachments.length === 0) || !ready} aria-label={t('chat.send')}><Send /></Button>
             )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <label className="inline-flex items-center gap-1.5">
+            {!isPublic && <label className="inline-flex items-center gap-1.5">
               <span className="text-muted-foreground">{t('chat.modelPicker')}</span>
               <select value={model} onChange={e => setModel(e.target.value)} className="rounded-md border bg-background px-1.5 py-1">
                 <option value={ELP_MODEL}>{t('chat.modeAuto')}</option>
                 {pinnedOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-            </label>
+            </label>}
             <button type="button" onClick={() => setTranslateOn(v => !v)} aria-pressed={translateOn}
               className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-1', translateOn && 'border-primary bg-primary/10')}>
               <Languages className="size-3.5" /> {t('chat.translate')}
@@ -465,7 +536,7 @@ export default function ChatPage() {
             )}
             <button type="button" onClick={() => (speaking ? stopSpeaking() : setSpeakOn(v => !v))} aria-pressed={speakOn}
               className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-1', speakOn && 'border-primary bg-primary/10')}
-              title={canSpeak ? undefined : t('chat.voiceUnavailable')}>
+              title={canSpeak ? undefined : isPublic ? t('chat.public.voiceSubscribersOnly') : t('chat.voiceUnavailable')}>
               {speaking ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
               {speaking ? t('chat.stopSpeaking') : t('chat.speakReplies')}
             </button>
@@ -480,9 +551,15 @@ export default function ChatPage() {
       <LiveInterpreter
         open={liveOpen}
         onOpenChange={setLiveOpen}
-        available={status?.liveTranslate?.available ?? false}
+        available={liveAvailable}
         defaultLanguage={targetLang}
+        {...(isPublic ? {
+          handshake: req => publicFetch<{ sdp: string }>('/api/public/realtime/translate', { method: 'POST', body: JSON.stringify(req) }),
+          unavailableMessage: t('chat.public.subscribersOnly'),
+        } : {})}
       />
+      {isPublic && <AccountDialog open={accountOpen} onOpenChange={setAccountOpen} status={pub} onAuthed={onAuthed} />}
+      {!isPublic && <MembersDialog open={membersOpen} onOpenChange={setMembersOpen} />}
     </div>
   )
 }

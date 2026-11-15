@@ -130,13 +130,48 @@ different model id. OpenAI bills realtime translation to the operator's key.
   sampling only on reasoning models (GPT-5 onward, o-series). Images and
   transcription are native in `services/media.ts`.
 
+## Public chat (elpgpt.com/chat)
+
+Set `ELPGPT_PUBLIC_CHAT=1` to open `/chat` to the public. It is off by default,
+because anonymous visitors spend the operator's quota. With it on, a browser
+that has no dashboard session gets the public chat instead of the login
+screen; the operator still gets the full dashboard chat.
+
+| Who | Models | Daily messages (default) | Extras |
+|---|---|---|---|
+| Guest (no account) | Free models | `ELPGPT_VISITOR_DAILY_LIMIT` (10) | |
+| Free member | Free models | `ELPGPT_FREE_DAILY_LIMIT` (30) | |
+| Subscriber | Claude, ChatGPT, Perplexity, GPT Image | `ELPGPT_SUBSCRIBER_DAILY_LIMIT` (300) | Voice, live interpreter |
+
+Every tier gets the same auto-routing; free tiers just route onto the free pool.
+Guests can sign up from the chat (`ELPGPT_PUBLIC_SIGNUP=0` closes sign-ups), and
+`ELPGPT_VISITOR_DAILY_LIMIT=0` requires an account to chat at all.
+
+**Subscriptions:** billing is not wired yet. The operator grants or removes the
+Subscriber plan, or disables an account, from **Chat → Members** in the
+dashboard.
+
+**How it stays safe:**
+
+- Members are not dashboard users. They have their own tables (`elp_members`,
+  `elp_member_sessions`) and tokens (`x-member-token`), and a member token can
+  never open `/api/*`.
+- `/api/public/chat` checks the caller's plan and daily quota, keeps only
+  `messages` and `stream`, forces the model to `elpgpt-auto`, and hands the
+  request to the gateway in-process with the unified key injected server-side.
+  The key never reaches a browser.
+- Premium routing is switched off by a request property set on the server, not
+  by a header, so a client cannot unlock it.
+- Guests are counted by a keyed hash of their IP (raw IPs are never stored).
+  Behind a reverse proxy, set `TRUST_PROXY` so the real client IP is used;
+  otherwise every guest shares the proxy's quota.
+- Sign-up and sign-in are throttled per IP, and disabling a member signs them
+  out everywhere.
+
 ## Not in this release
 
-- **Public visitors and subscribers.** `/chat` is behind the dashboard login,
-  like every other page: the gateway has one operator account and a unified
-  key, and that key must never be shipped to visitors' browsers. Serving
-  elpgpt.com/chat to the public needs user accounts, per-user quotas and billing
-  in front of `elpgpt-auto`.
+- **Billing.** Stripe (or another provider) checkout and webhooks to grant the
+  Subscriber plan automatically.
 - **Two-way conversations.** The live interpreter translates one direction at a
   time, into the chosen language. A two-person call needs one session per
   direction with separate audio tracks, as OpenAI recommends.

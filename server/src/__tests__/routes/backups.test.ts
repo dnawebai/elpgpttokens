@@ -147,7 +147,7 @@ describe('Backups API', () => {
 
   it('never dumps the accounts, sessions or URL-token tables', async () => {
     const tables = await request(app, 'GET', '/api/backups/tables');
-    for (const excluded of ['users', 'sessions', 'url_tokens']) {
+    for (const excluded of ['users', 'sessions', 'url_tokens', 'elp_members', 'elp_member_sessions']) {
       expect(tables.body.tables).not.toContain(excluded);
     }
 
@@ -160,6 +160,8 @@ describe('Backups API', () => {
     expect(sql).not.toMatch(/INSERT INTO "users"/);
     expect(sql).not.toMatch(/INSERT INTO "sessions"/);
     expect(sql).not.toMatch(/INSERT INTO "url_tokens"/);
+    expect(sql).not.toMatch(/INSERT INTO "elp_members"/);
+    expect(sql).not.toMatch(/INSERT INTO "elp_member_sessions"/);
     expect(sql).not.toMatch(/password_hash/);
     // Operator settings are still in there: that is what a backup is for.
     expect(sql).toMatch(/INSERT INTO "settings"/);

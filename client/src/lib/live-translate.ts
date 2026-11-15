@@ -57,12 +57,19 @@ export interface LiveSession {
   setMuted: (muted: boolean) => void
 }
 
+export interface HandshakeRequest { sdp: string | undefined; targetLanguage: string; source: LiveSource }
+
 export interface StartLiveOptions {
   targetLanguage: string
   source: LiveSource
   onTranscript: (t: LiveTranscript) => void
   onStatus: (s: LiveStatus, detail?: string) => void
+  /** SDP exchange; defaults to the dashboard endpoint. Public chat passes its own. */
+  handshake?: (req: HandshakeRequest) => Promise<{ sdp: string }>
 }
+
+const dashboardHandshake = (req: HandshakeRequest) =>
+  apiFetch<{ sdp: string }>('/api/elp/realtime/translate', { method: 'POST', body: JSON.stringify(req) })
 
 async function captureAudio(source: LiveSource): Promise<MediaStream> {
   if (source === 'mic') {
@@ -120,10 +127,7 @@ export async function startLiveTranslation(opts: StartLiveOptions): Promise<Live
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    const { sdp } = await apiFetch<{ sdp: string }>('/api/elp/realtime/translate', {
-      method: 'POST',
-      body: JSON.stringify({ sdp: offer.sdp, targetLanguage: opts.targetLanguage, source: opts.source }),
-    })
+    const { sdp } = await (opts.handshake ?? dashboardHandshake)({ sdp: offer.sdp, targetLanguage: opts.targetLanguage, source: opts.source })
     await pc.setRemoteDescription({ type: 'answer', sdp })
 
     return {
