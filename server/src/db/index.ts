@@ -245,7 +245,20 @@ export function isKeyStoreDecryptable(): boolean | null {
   return keyStoreDecryptable;
 }
 
+/**
+ * A deployment can pin the unified key with FREEAPI_UNIFIED_API_KEY (at least 32 characters), so a
+ * server-to-server client can be given the same key without reading it out of the dashboard. When
+ * it is set it wins over the stored key; regenerating in the dashboard then has no effect until
+ * the variable is removed.
+ */
+export function pinnedUnifiedApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = env.FREEAPI_UNIFIED_API_KEY?.trim();
+  return value && value.length >= 32 && !/\s/.test(value) ? value : null;
+}
+
 export function getUnifiedApiKey(): string {
+  const pinned = pinnedUnifiedApiKey();
+  if (pinned) return pinned;
   const db = getDb();
   const row = db.prepare("SELECT value FROM settings WHERE key = 'unified_api_key'").get() as { value: string };
   return row.value;
