@@ -30,6 +30,10 @@ export function GetKeyLink({ url }: { url: string }) {
 // not offered to new users (add/import/add-model pickers, setup checklist), but an
 // existing key still shows with its label so it can be edited or removed.
 export const PLATFORMS: { value: Platform; label: string; url: string; keyless?: boolean; hidden?: boolean }[] = [
+  // ELPGPT premium providers (paid, bring your own key): power /chat and elpgpt-auto.
+  { value: 'anthropic', label: 'Anthropic — Claude (paid, ELPGPT)', url: 'https://platform.claude.com/settings/keys' },
+  { value: 'openai', label: 'OpenAI — ChatGPT, GPT Image (paid, ELPGPT)', url: 'https://platform.openai.com/api-keys' },
+  { value: 'perplexity', label: 'Perplexity — web search (paid, ELPGPT)', url: 'https://www.perplexity.ai/account/api/keys' },
   { value: 'aclide', label: 'ACLIDE (shared monthly credits)', url: 'https://aclide.com/en/dashboard/api-keys', hidden: true },
   { value: 'speka', label: 'Speka ($1 shared monthly credits)', url: 'https://speka.me/dashboard/keys' },
   { value: 'kenari', label: 'Kenari (shared daily free chat and images)', url: 'https://kenari.id' },

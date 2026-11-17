@@ -61,6 +61,12 @@ export interface ImportSelectedResponse {
 // SambaNova was dropped in V23 (free tier permanently retired — 402
 // "payment method required" once the one-time $5 trial credit lapses).
 export type Platform =
+  // ELPGPT premium providers (paid, bring-your-own-key). Anthropic speaks the
+  // native Messages API via the official SDK; Perplexity speaks its Agent API
+  // (Sonar Chat Completions ended 2026-09-27); OpenAI is OpenAI-compatible.
+  | 'anthropic'
+  | 'openai'
+  | 'perplexity'
   | 'google'
   | 'groq'
   | 'cerebras'
@@ -578,6 +584,29 @@ export interface TokenUsage {
   estimated?: boolean;
 }
 
+/** A web source behind a search-grounded answer. `index` matches the inline
+ *  `[n]` (or `[web:n]`) marker in the answer text. */
+export interface SearchCitation {
+  index: number;
+  url: string;
+  title?: string;
+  snippet?: string;
+  date?: string;
+}
+
+/** How ELPGPT's auto-router picked the model for a request (elpgpt-auto). */
+export interface ElpRouteInfo {
+  intent: string;
+  reason: string;
+  confidence: number;
+  platform: Platform | null;
+  model: string | null;
+  label: string;
+  kind: 'chat' | 'image';
+  /** True when no premium route was configured and the free pool answered. */
+  fallback: boolean;
+}
+
 export interface ChatCompletionResponse {
   id: string;
   object: 'chat.completion';
@@ -592,6 +621,11 @@ export interface ChatCompletionResponse {
   // Anthropic auto-mode classifier results, when the upstream supplied them
   // (#1589). Never synthesized here; absent when the upstream sends none.
   safeguard_results?: unknown;
+  // Sources behind a search-grounded answer (Perplexity Agent API). Extra
+  // top-level field, ignored by OpenAI clients that don't know it.
+  citations?: SearchCitation[];
+  // Routing decision for elpgpt-auto requests.
+  elp_route?: ElpRouteInfo;
 }
 
 export interface ChatCompletionChunk {
@@ -614,6 +648,10 @@ export interface ChatCompletionChunk {
   // the upstream supplied them (#1589). Same rule as the non-streaming
   // response: passed through verbatim, never synthesized.
   safeguard_results?: unknown;
+  // Search sources, on the final chunk of a search-grounded stream.
+  citations?: SearchCitation[];
+  // Routing decision for elpgpt-auto streams, on the first chunk.
+  elp_route?: ElpRouteInfo;
 }
 
 // ---- Analytics Types ----

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
-import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ChevronDown, KeyRound, LogOut, Menu, MoreHorizontal, RefreshCw, Search, Settings, Sparkles } from 'lucide-react'
+import { MutationCache, QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { ChevronDown, KeyRound, Loader2, LogOut, Menu, MoreHorizontal, RefreshCw, Search, Settings, Sparkles } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -26,11 +26,13 @@ import { UpdateReminder } from '@/components/update-reminder'
 import { NewBuildPrompt } from '@/components/new-build-prompt'
 import { usePremium } from '@/hooks/use-premium'
 import { I18nProvider, useI18n } from '@/i18n'
-import { logout } from '@/lib/api'
+import { apiFetch, logout } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import { ThemeProvider } from '@/theme'
 import KeysPage from '@/pages/KeysPage'
 import PlaygroundPage from '@/pages/PlaygroundPage'
+import ChatPage from '@/pages/ChatPage'
+import { publicFetch, type PublicStatus } from '@/lib/public-api'
 import FallbackPage from '@/pages/FallbackPage'
 import ModelDetailPage from '@/pages/ModelDetailPage'
 import FusionPage from '@/pages/FusionPage'
@@ -70,6 +72,7 @@ const queryClient = new QueryClient({
 })
 
 const navItems = [
+  { to: '/chat', labelKey: 'nav.chat' },
   { to: '/models', labelKey: 'nav.models' },
   { to: '/playground', labelKey: 'nav.playground' },
   { to: '/keys', labelKey: 'nav.keys' },
@@ -419,7 +422,7 @@ function PageBoundary({ children }: { children: ReactNode }) {
 // padded column. Only the Playground so far: its three columns run edge to edge
 // and the transcript scrolls inside its own pane, so the page must be exactly
 // as tall as what is left under the navbar — not a centred card with margins.
-const FULL_BLEED_ROUTES = new Set(['/playground'])
+const FULL_BLEED_ROUTES = new Set(['/playground', '/chat'])
 
 // The shell's content container. A full-bleed route drops the max-width and the
 // padding and becomes a flex child that fills the rest of the screen; every
@@ -461,12 +464,57 @@ function AppShell({ children }: { children: ReactNode }) {
   )
 }
 
+// elpgpt.com/chat for the public. /chat normally sits behind the dashboard
+// login like every page; when the server has public chat switched on and the
+// browser holds no operator session, visitors and members get the public chat
+// instead of a login screen. Every other path, and every install without
+// public chat, renders exactly what it did before.
+function PublicChatGate({ children }: { children: ReactNode }) {
+  const location = useLocation()
+  const onChat = location.pathname === '/chat'
+  // On a dedicated host (chat.example.com) the root is the front door: a
+  // visitor there is sent to the chat, the operator still gets the dashboard.
+  const onRoot = location.pathname === '/'
+  const checks = onChat || onRoot
+  const auth = useQuery<{ authenticated: boolean }>({
+    queryKey: ['auth-status'],
+    queryFn: () => apiFetch('/api/auth/status'),
+    retry: false,
+    enabled: checks,
+  })
+  const pub = useQuery<PublicStatus>({
+    queryKey: ['public-chat-enabled'],
+    queryFn: () => publicFetch('/api/public/status'),
+    retry: false,
+    enabled: checks,
+  })
+  if (!checks) return <>{children}</>
+  if (auth.isLoading || pub.isLoading) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-background">
+        <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden />
+      </div>
+    )
+  }
+  if (auth.data?.authenticated || !pub.data?.enabled) return <>{children}</>
+  if (onRoot) return <Navigate to={`/chat${location.search}`} replace />
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+      <PageBoundary>
+        <ChatPage mode="public" />
+      </PageBoundary>
+      <Toaster />
+    </div>
+  )
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <I18nProvider>
           <BrowserRouter basename={import.meta.env.BASE_URL}>
+            <PublicChatGate>
             <AuthGate>
               {/* Column, so a full-bleed route can claim the height the navbar
                   leaves without anyone having to know how tall the navbar is.
@@ -493,6 +541,7 @@ function App() {
                       <Route path="/models/transcription/:id" element={<MediaDetailPage modality="transcription" />} />
                       <Route path="/models/search" element={<SearchPage />} />
                       <Route path="/models/decision" element={<DecisionPage />} />
+                      <Route path="/chat" element={<ChatPage />} />
                       <Route path="/playground" element={<PlaygroundPage />} />
                       <Route path="/keys" element={<KeysPage />} />
                       <Route path="/agents" element={<AgentsPage />} />
@@ -512,6 +561,7 @@ function App() {
                 <NewBuildPrompt />
               </AppShell>
             </AuthGate>
+            </PublicChatGate>
           </BrowserRouter>
         </I18nProvider>
       </ThemeProvider>

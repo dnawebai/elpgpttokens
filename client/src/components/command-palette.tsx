@@ -116,6 +116,7 @@ export function CommandPalette() {
       { id: 'p-decision', group: 'pages', label: t('decision.tab'), keywords: 'models decision classify choice yes no score clef mercury', icon: Scale, run: go('/models/decision') },
       { id: 'p-search', group: 'pages', label: t('search.tab'), keywords: 'models search web tavily exa firecrawl linkup parallel keenable', icon: Globe, run: go('/models/search') },
       { id: 'p-fusion', group: 'pages', label: t('models.fusionTab'), keywords: 'models fusion synthesis panel judge', icon: Zap, run: go('/models/fusion') },
+      { id: 'p-elp-chat', group: 'pages', label: t('nav.chat'), keywords: 'chat elpgpt claude chatgpt perplexity search image translate voice', icon: Sparkles, run: go('/chat') },
       { id: 'p-playground', group: 'pages', label: t('nav.playground'), keywords: 'playground test chat try', icon: SquareTerminal, run: go('/playground') },
       { id: 'p-keys', group: 'pages', label: t('nav.keys'), keywords: 'keys providers api tokens', icon: KeyRound, run: go('/keys') },
       { id: 'p-agents', group: 'pages', label: t('nav.agents'), keywords: 'agents claude codex cline ollama gemini', icon: Bot, run: go('/agents') },

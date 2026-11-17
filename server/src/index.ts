@@ -1,6 +1,7 @@
 import './env.js';
 import { createApp } from './app.js';
 import { initDb, getDb } from './db/index.js';
+import { ensureElpCatalog } from './services/elp-router.js';
 import { startHealthChecker, checkAllKeys } from './services/health.js';
 import { restoreProxySettings, flushProxyCache } from './lib/proxy.js';
 import { startWakeDetect } from './lib/wake-detect.js';
@@ -47,6 +48,8 @@ async function main() {
   }
   initDb(config.dbPath ?? undefined);
   applyDeclarativeConfigFromEnv();
+  // ELPGPT premium catalog rows (disabled in plain `auto`; see elp-router.ts).
+  ensureElpCatalog(getDb());
   // After initDb: the unknown-model half of this check reads the catalog.
   warnOnRoutingOverrideDrift();
 

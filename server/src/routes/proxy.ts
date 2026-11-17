@@ -7,7 +7,7 @@ import { type RouteResult, type ResolvedChain, type ChainRow, routeRequest, reso
 import { secondsUntilNextMonth, nextMonthResetAt } from '../services/key-budget.js';
 import { runEmbeddings, EmbeddingsError } from '../services/embeddings.js';
 import { runRerank, RerankError, rerankRetryAfterSec } from '../services/rerank.js';
-import { runSearch, SearchError, searchRetryAfterSec, listSearchEngines } from '../services/search.js';
+import { runSearch, SearchError, searchRetryAfterSec, listSearchEngines, searchAvailable } from '../services/search.js';
 import { runDecision, DecisionError, decisionRetryAfterSec, listDecisionModels, DECISION_QUESTION_TYPES } from '../services/decision.js';
 import { retryAfterSeconds } from '../lib/retry-hint.js';
 import { runImageGeneration, runVideoGeneration, runSpeech, runTranscription, MediaError, MAX_TRANSCRIPTION_BYTES } from '../services/media.js';
@@ -24,6 +24,7 @@ import { sanitizeProviderErrorMessage } from '../lib/error-redaction.js';
 import { rescueInlineToolCalls, startsWithDialectMarker, couldBecomeDialectMarker, containsDialectMarker } from '../lib/tool-call-rescue.js';
 import { getContextHandoffMode, recordIncomingMessages, maybeInjectContextHandoff, recordSuccessfulModel, hasPriorModel, HANDOFF_MAX_TOKENS } from '../services/context-handoff.js';
 import { isFusionModel, runFusion, fusionConfigSchema, FusionError, FUSION_MODEL_ID } from '../services/fusion.js';
+import { isElpAutoModel, decideElpRoute, encodeRouteHeader, searchGroundingPrompt, latestUserText, buildImagePrompt, ELP_AUTO_MODEL, type ElpDecision, type ElpRouteTable } from '../services/elp-router.js';
 import { isRetryableError, isPaymentRequiredError, isModelNotFoundError, isModelAccessForbiddenError, isClientAbortError, newClientAbortError, newHedgeAbortError, isUpstreamClassificationOutput } from '../lib/error-classify.js';
 import { logRequest } from '../lib/request-log.js';
 import { observeServedModel } from '../lib/served-model.js';
@@ -472,6 +473,17 @@ function buildCatalogEntries(filters: { onlyAvailable?: boolean; executionStatus
       context_length: autoContextWindow,
       available: true,
       unavailable_reason: null,
+    },
+    {
+      id: ELP_AUTO_MODEL,
+      object: 'model',
+      created: 0,
+      owned_by: 'freellmapi',
+      name: 'ELPGPT Auto (picks the best model for each prompt: search, images, code, writing, chat)',
+      context_window: autoContextWindow,
+      context_length: autoContextWindow,
+      available: autoContextWindow != null,
+      unavailable_reason: autoContextWindow != null ? null : 'no_models',
     },
     {
       id: FUSION_MODEL_ID,
@@ -1880,7 +1892,8 @@ proxyRouter.post('/chat/completions', async (req: Request, res: Response) => {
   // A Claude alias from GET /v1/models routes through the Claude family map
   // (a pinned model, auto, or a tier pool), the same as on /v1/messages.
   const claudeAlias = resolveListedClaudeAlias(clientModel);
-  const requestedModel = claudeAlias?.kind === 'model' ? claudeAlias.modelId : claudeAlias ? 'auto' : clientModel;
+  // `let`: elpgpt-auto below rewrites it to 'auto' when no premium route is usable.
+  let requestedModel = claudeAlias?.kind === 'model' ? claudeAlias.modelId : claudeAlias ? 'auto' : clientModel;
   const aliasTierChain = claudeAlias?.kind === 'tier' ? resolveModelGroupCandidates(claudeAlias.dbIds) : [];
   // Agent-tolerant knob normalization (#200): max_tokens <= 0 means "no
   // limit" in several clients → unset; tool_choice 'any' is OpenAI's
@@ -2238,6 +2251,47 @@ proxyRouter.post('/chat/completions', async (req: Request, res: Response) => {
     return;
   }
 
+  // ── ELPGPT auto-router (services/elp-router.ts) ──────────────────────────
+  // `elpgpt-auto` classifies the latest user turn (search, image, code,
+  // reasoning, writing, translation, vision, chat) and routes it to the best
+  // premium model the operator has a key for. Chat intents become a STRICT
+  // group chain below, so failover/cooldowns/logging are the normal path.
+  // Image intents are served here by the image pipeline. With no usable
+  // premium route the request drops to the free pool as plain `auto`; a
+  // search intent is then grounded with the gateway's own search engines.
+  // The decision rides in the X-ELP-Route header (URI-encoded JSON).
+  let elpDecision: ElpDecision | undefined;
+  if (isElpAutoModel(requestedModel)) {
+    // Public free tiers set this on the request in-process (routes/public.ts);
+    // it is never read from a header, so a client cannot grant itself premium.
+    const elpReq = req as Request & { elpAllowPremium?: boolean; elpRouteTable?: ElpRouteTable };
+    elpDecision = decideElpRoute(messages, { allowPremium: elpReq.elpAllowPremium !== false, table: elpReq.elpRouteTable });
+    if (elpDecision.info.kind === 'image') {
+      res.setHeader('X-ELP-Route', encodeRouteHeader(elpDecision.info));
+      await serveElpImage(res, elpDecision, messages, Boolean(stream), requestGroupId);
+      return;
+    }
+    if (elpDecision.effort && samplingParams.reasoning_effort === undefined) {
+      samplingParams.reasoning_effort = elpDecision.effort;
+    }
+    if (elpDecision.info.fallback) {
+      requestedModel = 'auto';
+      if (elpDecision.info.intent === 'web_search' && searchAvailable()) {
+        const query = latestUserText(messages).replace(/^\s*\/(?:search|web)\b\s*/i, '').trim();
+        try {
+          const found = await runSearch(query, { maxResults: 6 });
+          if (found.results.length > 0) {
+            messages = [{ role: 'system', content: searchGroundingPrompt(query, found.results) }, ...messages];
+            elpDecision.info = { ...elpDecision.info, label: `Web search (${found.provider}) + free models` };
+          }
+        } catch {
+          // No search results: answer from the model alone rather than fail.
+        }
+      }
+    }
+    res.setHeader('X-ELP-Route', encodeRouteHeader(elpDecision.info));
+  }
+
   // ── Response cache (services/cache.ts) ──
   // Opt-in exact-match cache. An identical earlier request is replayed from an
   // in-memory LRU without spending any provider quota. Computed here, after
@@ -2412,7 +2466,13 @@ proxyRouter.post('/chat/completions', async (req: Request, res: Response) => {
   // successful provider without leaking stickiness across groups.
   let stickyStrategyKey: string | undefined = strategyKey;
 
-  if (aliasTierChain.length > 0) {
+  if (elpDecision && elpDecision.chain.length > 0) {
+    // ELPGPT premium ladder for this intent: strict, first choice pinned to
+    // the front so the bandit can't reorder the operator's preference.
+    groupChain = elpDecision.chain;
+    stickyStrategyKey = `elp:${elpDecision.info.intent}`;
+    preferredModel = elpDecision.preferredModelDbId;
+  } else if (aliasTierChain.length > 0) {
     // A tier-mapped Claude alias routes STRICTLY over its tier's pool. An
     // empty tier falls through to plain auto, as on /v1/messages.
     groupChain = aliasTierChain;
@@ -3357,3 +3417,63 @@ proxyRouter.post('/chat/completions', async (req: Request, res: Response) => {
 // avoid an import cycle); imported above for internal use and re-exported here
 // for routes/responses.ts which imports it from this module.
 export { logRequest };
+
+
+/**
+ * Serve an elpgpt-auto image intent: generate with the image pipeline (same
+ * failover and accounting as /v1/images/generations) and answer as a chat
+ * completion whose content is a markdown image, so any chat client shows it.
+ * Streaming clients get the same content as a single delta.
+ */
+async function serveElpImage(
+  res: Response,
+  decision: ElpDecision,
+  messages: ChatMessage[],
+  stream: boolean,
+  requestGroupId: string,
+): Promise<void> {
+  const prompt = buildImagePrompt(messages, decision.intent);
+  let result;
+  try {
+    result = await runImageGeneration(decision.imageModel, { prompt, n: 1 });
+  } catch (err: any) {
+    const status = err instanceof MediaError ? err.status : 502;
+    res.status(status).json({
+      error: {
+        message: `Image generation failed: ${sanitizeProviderErrorMessage(err?.message ?? 'unknown error')}`,
+        type: status === 429 ? 'rate_limit_error' : status >= 500 ? 'server_error' : 'invalid_request_error',
+      },
+      execution_id: requestGroupId,
+    });
+    return;
+  }
+  const image = result.images[0];
+  const src = image?.url ?? (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
+  const alt = prompt.replace(/[[\]\n]/g, ' ').slice(0, 120);
+  const content = src ? `![${alt}](${src})` : 'The image model returned no image.';
+  const info = { ...decision.info, platform: result.platform as Platform, model: result.modelId };
+  res.setHeader('X-ELP-Route', encodeRouteHeader(info));
+  res.setHeader('X-Routed-Via', routedViaValue(result.platform, result.modelId));
+  const id = `chatcmpl-elp-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const created = Math.floor(Date.now() / 1000);
+  const usage = { prompt_tokens: Math.ceil(prompt.length / 4), completion_tokens: 0, total_tokens: Math.ceil(prompt.length / 4) };
+
+  if (!stream) {
+    res.json({
+      id, object: 'chat.completion', created, model: result.modelId,
+      choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+      usage, elp_route: info, execution_id: requestGroupId,
+    });
+    return;
+  }
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  const frame = (delta: Record<string, unknown>, finish: string | null, extra: Record<string, unknown> = {}) =>
+    res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model: result.modelId, choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`);
+  frame({ role: 'assistant', content: '' }, null, { elp_route: info });
+  frame({ content }, null);
+  frame({}, 'stop', { usage });
+  res.write('data: [DONE]\n\n');
+  res.end();
+}

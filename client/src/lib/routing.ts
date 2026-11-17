@@ -416,6 +416,9 @@ export function isGroupDepleted(
 }
 
 export const platformColors: Record<string, string> = {
+  anthropic:   '#d97757',
+  openai:      '#10a37f',
+  perplexity:  '#20808d',
   google:      '#4285f4',
   groq:        '#f55036',
   cerebras:    '#8b5cf6',

@@ -496,14 +496,14 @@ describe('Keys API', () => {
   describe('key import', () => {
     it('previews keys from multiple supported files', async () => {
       const { status, body } = await multipartRequest(app, '/api/keys/preview', 'files', [
-        { filename: 'keys.env', content: 'GROQ_API_KEY=gsk_test123\nANTHROPIC_API_KEY=sk-ant-test' },
+        { filename: 'keys.env', content: 'GROQ_API_KEY=gsk_test123\nACMEAI_API_KEY=sk-acme-test' },
         { filename: 'more.jsonc', content: '{ // comment\n "MISTRAL_API_KEY": "mist_test456",\n}' },
       ]);
 
       expect(status).toBe(200);
       expect(body.keys).toEqual([
         { keyName: 'GROQ_API_KEY', keyValue: 'gsk_test123', detectedPlatform: 'groq', prefix: 'GROQ_', isDuplicate: false },
-        { keyName: 'ANTHROPIC_API_KEY', keyValue: 'sk-ant-test', detectedPlatform: null, prefix: 'ANTHROPIC_', isDuplicate: false },
+        { keyName: 'ACMEAI_API_KEY', keyValue: 'sk-acme-test', detectedPlatform: null, prefix: 'ACMEAI_', isDuplicate: false },
         { keyName: 'MISTRAL_API_KEY', keyValue: 'mist_test456', detectedPlatform: 'mistral', prefix: 'MISTRAL_', isDuplicate: false },
       ]);
       expect(body.total).toBe(3);
@@ -527,12 +527,12 @@ describe('Keys API', () => {
 
     it('auto-imports recognized keys from one file and skips unknown providers', async () => {
       const { status, body } = await multipartRequest(app, '/api/keys/import', 'file', [
-        { filename: 'keys.env', content: 'GROQ_API_KEY=gsk_test123\nANTHROPIC_API_KEY=sk-ant-test' },
+        { filename: 'keys.env', content: 'GROQ_API_KEY=gsk_test123\nACMEAI_API_KEY=sk-acme-test' },
       ]);
 
       expect(status).toBe(200);
       expect(body.imported).toBe(1);
-      expect(body.skipped).toContain('ANTHROPIC_API_KEY');
+      expect(body.skipped).toContain('ACMEAI_API_KEY');
 
       const { body: keys } = await request(app, 'GET', '/api/keys');
       expect(keys).toHaveLength(1);

@@ -8,6 +8,7 @@
 // published catalog and arrive via catalog-sync (premium on the live tier within
 // ~12h, free once each model is 30 days old) — never seeded by migrations.
 import { getDb } from '../db/index.js';
+import { OPENAI_BASE_URL } from '../providers/openai.js';
 import { parseRetryAfterMs } from '../providers/base.js';
 import { RetryHintTracker } from '../lib/retry-hint.js';
 import { secondsUntilNextMonth } from './key-budget.js';
@@ -417,6 +418,22 @@ async function callImageProvider(
         throw new MediaError('kenari returned no image data', 502);
       }
       return j.data.map(i => ({ b64_json: i.b64_json as string }));
+    }
+    case 'openai': {
+      // GPT Image models always return base64 (no response_format knob).
+      const body: Record<string, unknown> = { model: row.model_id, prompt: p.prompt };
+      if (p.n !== undefined) body.n = p.n;
+      if (p.size) body.size = p.size;
+      // High-detail renders routinely take over a minute.
+      const r = await mediaFetch(`${OPENAI_BASE_URL}/images/generations`, 'openai', 'image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...bearerAuthHeader(key) },
+        body: JSON.stringify(body),
+      }, 180_000);
+      const j = (await r.json()) as { data?: { b64_json?: string; url?: string }[] };
+      const images = (j.data ?? []).filter(i => i?.b64_json || i?.url).map(i => ({ b64_json: i.b64_json, url: i.url }));
+      if (images.length === 0) throw new MediaError('OpenAI returned no image data', 502);
+      return images;
     }
     case 'custom': {
       if (!credential.baseUrl) throw new MediaError('custom image provider is missing base_url', 500);
@@ -985,6 +1002,20 @@ async function callSpeechProvider(
       if (!wav && !mp3) throw new MediaError('ElectronHub returned no recognized speech audio', 502);
       return { audio, contentType: wav ? 'audio/wav' : 'audio/mpeg' };
     }
+    case 'openai': {
+      const fmt = p.format ?? 'mp3';
+      const body: Record<string, unknown> = { model: row.model_id, input: p.input, voice: p.voice ?? 'alloy' };
+      if (p.format) body.response_format = p.format;
+      const r = await mediaFetch(`${OPENAI_BASE_URL}/audio/speech`, 'openai', 'audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...bearerAuthHeader(key) },
+        body: JSON.stringify(body),
+      });
+      return {
+        audio: Buffer.from(await r.arrayBuffer()),
+        contentType: r.headers.get('content-type') ?? contentTypeFor(fmt),
+      };
+    }
     case 'custom': {
       if (!credential.baseUrl) throw new MediaError('custom audio provider is missing base_url', 500);
       const fmt = p.format ?? 'mp3';
@@ -1456,6 +1487,23 @@ async function callTranscriptionProvider(
       const j = (await r.json()) as { text?: unknown } | null;
       if (!j || typeof j.text !== 'string') throw new MediaError('typhoon returned no transcription text', 502);
       return { text: j.text };
+    }
+    case 'openai': {
+      // Same multipart shape as the custom branch below, against OpenAI.
+      const form = new FormData();
+      form.append('file', new Blob([p.file], { type: p.mimeType || 'application/octet-stream' }), p.filename);
+      form.append('model', m.modelId);
+      if (p.language) form.append('language', p.language);
+      if (p.prompt) form.append('prompt', p.prompt);
+      form.append('response_format', 'json');
+      const r = await mediaFetch(`${OPENAI_BASE_URL}/audio/transcriptions`, 'openai', 'transcription', {
+        method: 'POST',
+        headers: { ...bearerAuthHeader(key) },
+        body: form,
+      });
+      const j = (await r.json()) as { text?: string; language?: string; duration?: number };
+      if (typeof j.text !== 'string') throw new MediaError('OpenAI returned no transcription text', 502);
+      return { text: j.text, language: j.language, duration: j.duration };
     }
     case 'custom': {
       // Any OpenAI-compatible STT server (faster-whisper-server, LocalAI,

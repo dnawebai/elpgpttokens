@@ -54,12 +54,26 @@ import { OnomeoProvider } from './onomeo.js';
 import { IteraComputeProvider } from './iteracompute.js';
 import { SerpSearchProvider } from './serpsearch.js';
 import { BraveProvider } from './brave.js';
+import { AnthropicProvider } from './anthropic.js';
+import { PerplexityProvider } from './perplexity.js';
+import { OpenAIProvider } from './openai.js';
 
 const providers = new Map<Platform, BaseProvider>();
 
 function register(provider: BaseProvider) {
   providers.set(provider.platform, provider);
 }
+
+// ELPGPT premium providers — paid, bring-your-own-key. They power the
+// elpgpt-auto intent router (services/elp-router.ts) and /chat.
+// Anthropic: native Messages API through the official SDK.
+register(new AnthropicProvider());
+// Perplexity: Agent API (/v1/agent) with web search and citations. Sonar Chat
+// Completions support ended 2026-09-27, so it has its own adapter.
+register(new PerplexityProvider());
+// OpenAI: Chat Completions (max_completion_tokens, default sampling on
+// reasoning models); images + transcription are native in services/media.ts.
+register(new OpenAIProvider());
 
 // Google - unique Gemini API format. Gemma reasoning variants take 20-60s on
 // cold start; the default 15s false-flags them as broken. 60s covers the

@@ -30,9 +30,13 @@ export interface DictationButtonProps {
   /** The open microphone stream while recording, null otherwise — for the wave. */
   onStreamChange?: (stream: MediaStream | null) => void
   className?: string
+  /** Where to send the clip instead of /v1/audio/transcriptions (public chat). */
+  endpoint?: string
+  /** Extra request headers (e.g. a member token) sent with the clip. */
+  headers?: Record<string, string>
 }
 
-export function DictationButton({ available, model, apiKey, disabled, onText, onPhaseChange, onStreamChange, className }: DictationButtonProps) {
+export function DictationButton({ available, model, apiKey, disabled, onText, onPhaseChange, onStreamChange, className, endpoint, headers: extraHeaders }: DictationButtonProps) {
   const { t } = useI18n()
   const [phase, setPhaseState] = useState<DictationPhase>('idle')
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -91,10 +95,10 @@ export function DictationButton({ available, model, apiKey, disabled, onText, on
       form.append('file', blob, recordingFilename(blob.type))
       form.append('model', model)
       form.append('response_format', 'json')
-      const headers: Record<string, string> = {}
-      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+      const headers: Record<string, string> = { ...extraHeaders }
+      if (apiKey && !endpoint) headers['Authorization'] = `Bearer ${apiKey}`
       const base = import.meta.env.BASE_URL.replace(/\/$/, '')
-      const res = await fetch(`${base}/v1/audio/transcriptions`, { method: 'POST', headers, body: form })
+      const res = await fetch(endpoint ?? `${base}/v1/audio/transcriptions`, { method: 'POST', headers, body: form })
       if (!res.ok) {
         const body = await res.json().catch(() => null) as { error?: { message?: string } } | null
         throw new Error(body?.error?.message || `HTTP ${res.status}`)

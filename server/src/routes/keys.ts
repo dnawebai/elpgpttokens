@@ -55,6 +55,10 @@ const UNLISTED_PLATFORMS = new Set<string>(['aclide', 'waterfall']);
 // was dropped after its retirement on 30 July 2026 (#1557). Auray was removed
 // at the provider's request after it started charging for API access (#1583).
 const PLATFORMS = [
+  // ELPGPT premium (paid, bring-your-own-key) — see services/elp-router.ts.
+  'anthropic',
+  'openai',
+  'perplexity',
   'aclide',
   'speka',
   'kenari',
